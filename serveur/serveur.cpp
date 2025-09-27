@@ -5,17 +5,82 @@
 #include <signal.h>
 #include <pthread.h>
 #include "../TCP/TCP.h"
-#include "../protocole/smop.h"
+#include "../protocole/cbp.h"
 
+/**
+ * Gestionnaire de signal pour l'arrêt propre du serveur
+ * 
+ * @param s: Numéro du signal reçu (SIGINT)
+ * 
+ * @return void: Aucune valeur de retour
+ * 
+ * Cette fonction sert à:
+ * - Intercepter le signal SIGINT (Ctrl+C)
+ * - Fermer proprement toutes les connexions
+ * - Libérer les ressources du serveur
+ * - Assurer un arrêt propre du système
+ * 
+ * Note: Appelée automatiquement lors de l'interruption du serveur
+ */
 void HandlerSIGINT(int s);
+
+/**
+ * Traite une connexion client individuelle
+ * 
+ * @param sService: Descripteur de socket du client à traiter
+ * 
+ * @return void: Aucune valeur de retour
+ * 
+ * Cette fonction sert à:
+ * - Recevoir les requêtes du client
+ * - Traiter les requêtes via le protocole CBP
+ * - Envoyer les réponses au client
+ * - Gérer la fin de connexion
+ * 
+ * Note: Fonction appelée par les threads du pool
+ */
 void TraitementConnexion(int sService);
+
+/**
+ * Fonction principale des threads du pool de traitement
+ * 
+ * @param p: Pointeur vers les paramètres du thread (non utilisé)
+ * 
+ * @return void*: Pointeur de retour (toujours NULL)
+ * 
+ * Cette fonction sert à:
+ * - Attendre les connexions dans la file d'attente
+ * - Traiter les connexions client une par une
+ * - Gérer le cycle de vie des connexions
+ * - Maintenir l'activité du thread
+ * 
+ * Note: Fonction exécutée en boucle infinie par chaque thread
+ */
 void* FctThreadClient(void* p);
+
+/**
+ * Charge la configuration du serveur depuis un fichier
+ * 
+ * @param nomFichier: Nom du fichier de configuration à charger
+ * 
+ * @return int: 
+ *   - 0: Chargement réussi
+ *   - -1: Erreur lors du chargement
+ * 
+ * Cette fonction sert à:
+ * - Lire le fichier de configuration
+ * - Parser les paramètres (port, threads, file d'attente)
+ * - Initialiser les variables globales
+ * - Valider la configuration
+ * 
+ * Note: Format du fichier: "cle=valeur" (une par ligne)
+ */
 int chargerConfiguration(const char* nomFichier);
 
-// Variables de configuration
-int PORT_RESERVATION = 8080;
-int NB_THREADS_POOL = 4;
-int TAILLE_FILE_ATTENTE = 20;
+// Variables de configuration (seront chargées depuis le fichier .conf)
+int PORT_RESERVATION;
+int NB_THREADS_POOL;
+int TAILLE_FILE_ATTENTE;
 
 int sEcoute;
 
@@ -23,30 +88,42 @@ int* socketsAcceptees;
 int indiceEcriture = 0, indiceLecture = 0;
 pthread_mutex_t mutexSocketsAcceptees;
 pthread_cond_t condSocketsAcceptees; 
+/**
+ * Fonction principale du serveur de réservation de consultations
+ * 
+ * @param argc: Nombre d'arguments de la ligne de commande
+ * @param argv: Tableau des arguments (argv[0] = nom du programme, argv[1] = fichier config optionnel)
+ * 
+ * @return int: 
+ *   - 0: Arrêt normal du serveur
+ *   - 1: Erreur lors de l'initialisation
+ * 
+ * Cette fonction sert à:
+ * - Charger la configuration depuis un fichier
+ * - Initialiser le socket d'écoute
+ * - Créer le pool de threads de traitement
+ * - Gérer les connexions client en boucle infinie
+ * - Assurer l'arrêt propre du serveur
+ * 
+ * Note: Le serveur fonctionne en mode multi-thread avec une file d'attente
+ */
 int main(int argc, char* argv[])
 {
-    // Configuration par défaut (pas besoin de fichier de config)
-    printf("Utilisation de la configuration par défaut :\n");
+    // Chargement obligatoire du fichier de configuration
+    const char* fichierConfig = (argc == 2) ? argv[1] : "serveur.conf";
+    
+    printf("Chargement du fichier de configuration : %s\n", fichierConfig);
+    if (chargerConfiguration(fichierConfig) != 0)
+    {
+        printf("Erreur lors du chargement de la configuration\n");
+        printf("Usage: %s [fichier_config]\n", argv[0]);
+        exit(1);
+    }
+    
+    printf("Configuration chargée depuis le fichier :\n");
     printf("  Port: %d\n", PORT_RESERVATION);
     printf("  Threads: %d\n", NB_THREADS_POOL);
     printf("  File d'attente: %d\n", TAILLE_FILE_ATTENTE);
-    
-    // Si un fichier de config est fourni, l'utiliser
-    if (argc == 2)
-    {
-        printf("Chargement du fichier de configuration : %s\n", argv[1]);
-        if (chargerConfiguration(argv[1]) != 0)
-        {
-            printf("Erreur lors du chargement de la configuration, utilisation des valeurs par défaut\n");
-        }
-        else
-        {
-            printf("Configuration chargée depuis le fichier :\n");
-            printf("  Port: %d\n", PORT_RESERVATION);
-            printf("  Threads: %d\n", NB_THREADS_POOL);
-            printf("  File d'attente: %d\n", TAILLE_FILE_ATTENTE);
-        }
-    }
     
     // Allocation dynamique du tableau de sockets
     socketsAcceptees = (int*)malloc(TAILLE_FILE_ATTENTE * sizeof(int));
@@ -55,6 +132,8 @@ int main(int argc, char* argv[])
         printf("Erreur d'allocation mémoire\n");
         exit(1);
     }
+
+    
     
     // Initialisation socketsAcceptees
     pthread_mutex_init(&mutexSocketsAcceptees, NULL);
@@ -100,7 +179,7 @@ int main(int argc, char* argv[])
         {
             perror("Erreur de Accept");
             close(sEcoute);
-            SMOP_Close();
+            CBP_Close();
             exit(1);
         }
         printf("Connexion acceptée : IP=%s socket=%d\n", ipClient, sService);
@@ -115,6 +194,22 @@ int main(int argc, char* argv[])
         pthread_cond_signal(&condSocketsAcceptees);
     }
 } 
+
+/**
+ * Fonction principale des threads du pool de traitement
+ * 
+ * @param p: Pointeur vers les paramètres du thread (non utilisé)
+ * 
+ * @return void*: Pointeur de retour (toujours NULL)
+ * 
+ * Cette fonction sert à:
+ * - Attendre les connexions dans la file d'attente
+ * - Traiter les connexions client une par une
+ * - Gérer le cycle de vie des connexions
+ * - Maintenir l'activité du thread
+ * 
+ * Note: Fonction exécutée en boucle infinie par chaque thread
+ */
 void* FctThreadClient(void* p)
 {
     (void)p; // Supprimer l'avertissement du paramètre inutilisé
@@ -139,6 +234,22 @@ void* FctThreadClient(void* p)
         TraitementConnexion(sService);
     }
 } 
+
+/**
+ * Gestionnaire de signal pour l'arrêt propre du serveur
+ * 
+ * @param s: Numéro du signal reçu (SIGINT)
+ * 
+ * @return void: Aucune valeur de retour
+ * 
+ * Cette fonction sert à:
+ * - Intercepter le signal SIGINT (Ctrl+C)
+ * - Fermer proprement toutes les connexions
+ * - Libérer les ressources du serveur
+ * - Assurer un arrêt propre du système
+ * 
+ * Note: Appelée automatiquement lors de l'interruption du serveur
+ */
 void HandlerSIGINT(int s)
 {
     (void)s; // Supprimer l'avertissement du paramètre inutilisé
@@ -148,9 +259,25 @@ void HandlerSIGINT(int s)
     for (int i = 0; i < TAILLE_FILE_ATTENTE; i++)
         if (socketsAcceptees[i] != -1) close(socketsAcceptees[i]);
     pthread_mutex_unlock(&mutexSocketsAcceptees);
-    SMOP_Close();
+    CBP_Close();
     exit(0);
 } 
+
+/**
+ * Traite une connexion client individuelle
+ * 
+ * @param sService: Descripteur de socket du client à traiter
+ * 
+ * @return void: Aucune valeur de retour
+ * 
+ * Cette fonction sert à:
+ * - Recevoir les requêtes du client
+ * - Traiter les requêtes via le protocole CBP
+ * - Envoyer les réponses au client
+ * - Gérer la fin de connexion
+ * 
+ * Note: Fonction appelée par les threads du pool
+ */
 void TraitementConnexion(int sService)
 {
     char requete[200], reponse[200];
@@ -181,7 +308,7 @@ void TraitementConnexion(int sService)
         printf("\t[THREAD %lu] Requete recue = %s\n", (unsigned long)pthread_self(), requete);
         
         // ***** Traitement de la requete ***********
-        onContinue = SMOP(requete, reponse, sService);
+        onContinue = CBP(requete, reponse, sService);
         
         // ***** Envoi de la reponse ****************
         if ((nbEcrits = Send(sService, reponse, strlen(reponse))) < 0)
@@ -200,6 +327,23 @@ void TraitementConnexion(int sService)
 }
 
 // Fonction de chargement de la configuration
+/**
+ * Charge la configuration du serveur depuis un fichier
+ * 
+ * @param nomFichier: Nom du fichier de configuration à charger
+ * 
+ * @return int: 
+ *   - 0: Chargement réussi
+ *   - -1: Erreur lors du chargement
+ * 
+ * Cette fonction sert à:
+ * - Lire le fichier de configuration
+ * - Parser les paramètres (port, threads, file d'attente)
+ * - Initialiser les variables globales
+ * - Valider la configuration
+ * 
+ * Note: Format du fichier: "cle=valeur" (une par ligne)
+ */
 int chargerConfiguration(const char* nomFichier)
 {
     FILE* fichier = fopen(nomFichier, "r");

@@ -1,5 +1,6 @@
 #include "mainwindowclientconsultationbooker.h"
 #include "ui_mainwindowclientconsultationbooker.h"
+
 #include <QInputDialog>
 #include <QMessageBox>
 #include <iostream>
@@ -11,8 +12,6 @@ MainWindowClientConsultationBooker::MainWindowClientConsultationBooker(QWidget *
     , ui(new Ui::MainWindowClientConsultationBooker)
     , socketServeur(-1)
     , connecte(false)
-    , ipServeur("127.0.0.1")
-    , portServeur(8080)
 {
     ui->setupUi(this);
     logoutOk();
@@ -121,7 +120,7 @@ string MainWindowClientConsultationBooker::getSelectionSpecialty() const {
 
 void MainWindowClientConsultationBooker::clearComboBoxSpecialties() {
     ui->comboBoxSpecialties->clear();
-    this->addComboBoxSpecialties("--- TOUTES ---");
+    this->addComboBoxSpecialties(TOUTES);
 }
 
 void MainWindowClientConsultationBooker::addComboBoxDoctors(string doctor) {
@@ -134,7 +133,7 @@ string MainWindowClientConsultationBooker::getSelectionDoctor() const {
 
 void MainWindowClientConsultationBooker::clearComboBoxDoctors() {
     ui->comboBoxDoctors->clear();
-    this->addComboBoxDoctors("--- TOUS ---");
+    this->addComboBoxDoctors(TOUS);
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -157,11 +156,11 @@ void MainWindowClientConsultationBooker::setLastName(string value) {
 }
 
 string MainWindowClientConsultationBooker::getStartDate() const {
-    return ui->dateEditStartDate->date().toString("yyyy-MM-dd").toStdString();
+    return ui->dateEditStartDate->date().toString(DEFAULT_DATE_FORMAT).toStdString();
 }
 
 string MainWindowClientConsultationBooker::getEndDate() const {
-    return ui->dateEditEndDate->date().toString("yyyy-MM-dd").toStdString();
+    return ui->dateEditEndDate->date().toString(DEFAULT_DATE_FORMAT).toStdString();
 }
 
 void MainWindowClientConsultationBooker::setFirstName(string value) {
@@ -181,12 +180,12 @@ void MainWindowClientConsultationBooker::setNewPatientChecked(bool state) {
 }
 
 void MainWindowClientConsultationBooker::setStartDate(string date) {
-    QDate qdate = QDate::fromString(QString::fromStdString(date), "yyyy-MM-dd");
+    QDate qdate = QDate::fromString(QString::fromStdString(date), DEFAULT_DATE_FORMAT);
     if (qdate.isValid()) ui->dateEditStartDate->setDate(qdate);
 }
 
 void MainWindowClientConsultationBooker::setEndDate(string date) {
-    QDate qdate = QDate::fromString(QString::fromStdString(date), "yyyy-MM-dd");
+    QDate qdate = QDate::fromString(QString::fromStdString(date), DEFAULT_DATE_FORMAT);
     if (qdate.isValid()) ui->dateEditEndDate->setDate(qdate);
 }
 
@@ -214,8 +213,8 @@ void MainWindowClientConsultationBooker::logoutOk() {
     ui->pushButtonLogin->setEnabled(true);
     ui->pushButtonRechercher->setEnabled(false);
     ui->pushButtonReserver->setEnabled(false);
-    setStartDate("2025-09-15");
-    setEndDate("2025-12-31");
+    setStartDate(DEFAULT_DATE_DEBUT);
+    setEndDate(DEFAULT_DATE_FIN);
     clearComboBoxDoctors();
     clearComboBoxSpecialties();
     clearTableConsultations();
@@ -314,14 +313,14 @@ bool MainWindowClientConsultationBooker::estConnecte() const
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
 bool MainWindowClientConsultationBooker::loginPatient(const string& nom, const string& prenom, int patientId, bool nouveauPatient)
 {
-    string requete = "LOGIN#" + nom + "#" + prenom + "#" + to_string(patientId) + "#" + (nouveauPatient ? "1" : "0");
+    string requete = string(LOGIN) + diez + nom + diez + prenom + diez + to_string(patientId) + diez + (nouveauPatient ? "1" : "0");
     string reponse;
     
     if (!envoyerRequete(requete, reponse))
         return false;
     
     // Parser la réponse
-    if (reponse.find("LOGIN#ok") == 0)
+    if (reponse.find(string(LOGIN) + diez + string(OK)) == 0)
     {
         cout << "Login réussi" << endl;
         return true;
@@ -335,7 +334,7 @@ bool MainWindowClientConsultationBooker::loginPatient(const string& nom, const s
 
 void MainWindowClientConsultationBooker::logoutPatient()
 {
-    string requete = "LOGOUT";
+    string requete = LOGOUT;
     string reponse;
     
     envoyerRequete(requete, reponse);
@@ -344,29 +343,29 @@ void MainWindowClientConsultationBooker::logoutPatient()
 
 bool MainWindowClientConsultationBooker::chargerSpecialties()
 {
-    string requete = "GET_SPECIALTIES";
+    string requete = GET_SPECIALTIES;
     string reponse;
     
     if (!envoyerRequete(requete, reponse))
         return false;
     
-    if (reponse.find("GET_SPECIALTIES#ok") == 0)
+    if (reponse.find(string(GET_SPECIALTIES) + diez + string(OK)) == 0)
     {
         // Parser et remplir la combo box
         clearComboBoxSpecialties();
-        addComboBoxSpecialties("--- TOUTES ---");
+        addComboBoxSpecialties(TOUTES);
         
         // Extraire les spécialités de la réponse
-        string data = reponse.substr(18); // Enlever "GET_SPECIALTIES#ok"
+        string data = reponse.substr(strlen(GET_SPECIALTIES) + 4); // Enlever "GET_SPECIALTIES#ok"
         size_t pos = 0;
-        while ((pos = data.find("#")) != string::npos)
+        while ((pos = data.find(diez)) != string::npos)
         {
             data = data.substr(pos + 1); // Enlever le #
-            size_t nextPos = data.find("#");
+            size_t nextPos = data.find(diez);
             if (nextPos != string::npos)
             {
                 string specialite = data.substr(nextPos + 1);
-                size_t endPos = specialite.find("#");
+                size_t endPos = specialite.find(diez);
                 if (endPos != string::npos)
                 {
                     specialite = specialite.substr(0, endPos);
@@ -386,29 +385,29 @@ bool MainWindowClientConsultationBooker::chargerSpecialties()
 
 bool MainWindowClientConsultationBooker::chargerDocteurs()
 {
-    string requete = "GET_DOCTORS";
+    string requete = GET_DOCTORS;
     string reponse;
     
     if (!envoyerRequete(requete, reponse))
         return false;
     
-    if (reponse.find("GET_DOCTORS#ok") == 0)
+    if (reponse.find(string(GET_DOCTORS) + diez + string(OK)) == 0)
     {
         // Parser et remplir la combo box
         clearComboBoxDoctors();
-        addComboBoxDoctors("--- TOUS ---");
+        addComboBoxDoctors(TOUS);
         
         // Extraire les médecins de la réponse
-        string data = reponse.substr(14); // Enlever "GET_DOCTORS#ok"
+        string data = reponse.substr(strlen(GET_DOCTORS) + 4); // Enlever "GET_DOCTORS#ok"
         size_t pos = 0;
-        while ((pos = data.find("#")) != string::npos)
+        while ((pos = data.find(diez)) != string::npos)
         {
             data = data.substr(pos + 1); // Enlever le #
-            size_t nextPos = data.find("#");
+            size_t nextPos = data.find(diez);
             if (nextPos != string::npos)
             {
                 string docteur = data.substr(nextPos + 1);
-                size_t endPos = docteur.find("#");
+                size_t endPos = docteur.find(diez);
                 if (endPos != string::npos)
                 {
                     docteur = docteur.substr(0, endPos);
@@ -429,24 +428,24 @@ bool MainWindowClientConsultationBooker::chargerDocteurs()
 bool MainWindowClientConsultationBooker::rechercherConsultations(const string& specialite, const string& docteur, 
                                                                const string& dateDebut, const string& dateFin)
 {
-    string requete = "SEARCH_CONSULTATIONS#" + specialite + "#" + docteur + "#" + dateDebut + "#" + dateFin;
+    string requete = string(SEARCH_CONSULTATIONS) + diez + specialite + diez + docteur + diez + dateDebut + diez + dateFin;
     string reponse;
     
     if (!envoyerRequete(requete, reponse))
         return false;
     
-    if (reponse.find("SEARCH_CONSULTATIONS#ok") == 0)
+    if (reponse.find(string(SEARCH_CONSULTATIONS) + diez + string(OK)) == 0)
     {
         // Parser et remplir la table
         clearTableConsultations();
         
         // Extraire les consultations de la réponse
-        string data = reponse.substr(23); // Enlever "SEARCH_CONSULTATIONS#ok"
+        string data = reponse.substr(strlen(SEARCH_CONSULTATIONS) + 4); // Enlever "SEARCH_CONSULTATIONS#ok"
         
         // Diviser par les séparateurs | pour obtenir chaque consultation
         vector<string> consultations;
         size_t pos = 0;
-        while ((pos = data.find("|")) != string::npos)
+        while ((pos = data.find(pipeSeparator)) != string::npos)
         {
             consultations.push_back(data.substr(0, pos));
             data = data.substr(pos + 1);
@@ -464,7 +463,7 @@ bool MainWindowClientConsultationBooker::rechercherConsultations(const string& s
             string champs[5];
             for (int i = 0; i < 5; i++)
             {
-                size_t nextPos = data.find("#");
+                size_t nextPos = data.find(diez);
                 if (nextPos != string::npos)
                 {
                     champs[i] = data.substr(0, nextPos);
@@ -493,13 +492,13 @@ bool MainWindowClientConsultationBooker::rechercherConsultations(const string& s
 
 bool MainWindowClientConsultationBooker::reserverConsultation(int consultationId, const string& raison)
 {
-    string requete = "BOOK_CONSULTATION#" + to_string(consultationId) + "#" + raison;
+    string requete = string(BOOK_CONSULTATION) + diez + to_string(consultationId) + diez + raison;
     string reponse;
     
     if (!envoyerRequete(requete, reponse))
         return false;
     
-    if (reponse.find("BOOK_CONSULTATION#ok") == 0)
+    if (reponse.find(string(BOOK_CONSULTATION) + diez + string(OK)) == 0)
     {
         cout << "Consultation réservée avec succès" << endl;
         return true;
