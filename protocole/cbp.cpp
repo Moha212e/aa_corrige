@@ -83,6 +83,7 @@ bool CBP(char* requete, char* reponse, int socket)
             pthread_mutex_lock(&mutexBD);
             if (connexionBD == NULL && connecterBD() != 0)
             {
+                printf("Erreur de connexion à la base de données pour GET_SPECIALTIES\n");
                 pthread_mutex_unlock(&mutexBD);
                 sprintf(reponse, GET_SPECIALTIES "#" KO "#Erreur connexion BD !");
             }
@@ -92,10 +93,12 @@ bool CBP(char* requete, char* reponse, int socket)
                 MYSQL_ROW ligne;
                 char temp[1024] = "";
                 
+                printf("Requête SQL: SELECT id, name FROM specialties ORDER BY name\n");
                 if (mysql_query(connexionBD, "SELECT id, name FROM specialties ORDER BY name"))
                 {
+                    printf("Erreur MySQL: %s\n", mysql_error(connexionBD));
                     pthread_mutex_unlock(&mutexBD);
-                    sprintf(reponse, GET_SPECIALTIES "#" KO "#Erreur requête BD !");
+                    sprintf(reponse, GET_SPECIALTIES "#" KO "#Erreur requête BD: %s", mysql_error(connexionBD));
                 }
                 else
                 {
@@ -139,6 +142,7 @@ bool CBP(char* requete, char* reponse, int socket)
             pthread_mutex_lock(&mutexBD);
             if (connexionBD == NULL && connecterBD() != 0)
             {
+                printf("Erreur de connexion à la base de données pour GET_DOCTORS\n");
                 pthread_mutex_unlock(&mutexBD);
                 sprintf(reponse, GET_DOCTORS "#" KO "#Erreur connexion BD !");
             }
@@ -148,10 +152,12 @@ bool CBP(char* requete, char* reponse, int socket)
                 MYSQL_ROW ligne;
                 char temp[1024] = "";
                 
+                printf("Requête SQL: SELECT d.id, d.last_name, d.first_name, s.name FROM doctors d JOIN specialties s ON d.specialty_id = s.id ORDER BY d.last_name, d.first_name\n");
                 if (mysql_query(connexionBD, "SELECT d.id, d.last_name, d.first_name, s.name FROM doctors d JOIN specialties s ON d.specialty_id = s.id ORDER BY d.last_name, d.first_name"))
                 {
+                    printf("Erreur MySQL: %s\n", mysql_error(connexionBD));
                     pthread_mutex_unlock(&mutexBD);
-                    sprintf(reponse, GET_DOCTORS "#" KO "#Erreur requête BD !");
+                    sprintf(reponse, GET_DOCTORS "#" KO "#Erreur requête BD: %s", mysql_error(connexionBD));
                 }
                 else
                 {
@@ -358,10 +364,12 @@ bool CBP(char* requete, char* reponse, int socket)
                         "UPDATE consultations SET patient_id = %d, reason = '%s' WHERE id = %s AND patient_id IS NULL",
                         patientId, reason, consultationId);
                     
+                    printf("Requête SQL: %s\n", requete);
                     if (mysql_query(connexionBD, requete))
                     {
+                        printf("Erreur MySQL: %s\n", mysql_error(connexionBD));
                         pthread_mutex_unlock(&mutexBD);
-                        sprintf(reponse, BOOK_CONSULTATION "#" KO "#Erreur requête BD !");
+                        sprintf(reponse, BOOK_CONSULTATION "#" KO "#Erreur requête BD: %s", mysql_error(connexionBD));
                     }
                     else
                     {
