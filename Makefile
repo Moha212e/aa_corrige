@@ -39,6 +39,31 @@ QT_FLAGS = `pkg-config --cflags --libs Qt5Widgets`
 # Default target
 all: bin $(BD_BIN) $(CLIENT_BIN) $(SERVEUR_BIN)
 
+# Help target
+help:
+	@echo "Makefile pour le projet Hospital Consultation Booker"
+	@echo ""
+	@echo "Cibles disponibles:"
+	@echo "  all         - Compile tous les exécutables"
+	@echo "  initdb      - Compile et exécute CreationBD pour initialiser la base de données"
+	@echo "  setup       - Compile tout et initialise la base de données"
+	@echo "  run-serveur - Lance le serveur"
+	@echo "  run-client  - Lance le client Qt"
+	@echo "  clean       - Supprime tous les fichiers compilés"
+	@echo "  rebuild     - Clean + compile tout"
+	@echo "  help        - Affiche cette aide"
+	@echo ""
+	@echo "Utilisation recommandée:"
+	@echo "  1. make setup     (première fois)"
+	@echo "  2. make run-serveur (dans un terminal)"
+	@echo "  3. make run-client  (dans un autre terminal)"
+
+# Create and initialize database
+initdb: $(BD_BIN)
+	@echo "Création et initialisation de la base de données..."
+	./$(BD_BIN)
+	@echo "Base de données initialisée avec succès!"
+
 # Create bin directory
 bin:
 
@@ -54,4 +79,20 @@ $(SERVEUR_BIN): $(SERVEUR_SRC) $(SOCKET_HEADERS) $(PROTOCOLE_HEADERS) $(UTIL_HEA
 clean:
 	rm -f $(BD_BIN) $(CLIENT_BIN) $(SERVEUR_BIN)
 
-.PHONY: all clean bin
+# Clean and rebuild everything
+rebuild: clean all
+
+# Full setup: build everything and initialize database
+setup: all initdb
+
+# Run server (after building)
+run-serveur: $(SERVEUR_BIN)
+	@echo "Lancement du serveur..."
+	./$(SERVEUR_BIN)
+
+# Run client (after building)
+run-client: $(CLIENT_BIN)
+	@echo "Lancement du client..."
+	./$(CLIENT_BIN)
+
+.PHONY: all clean bin initdb rebuild setup run-serveur run-client help
