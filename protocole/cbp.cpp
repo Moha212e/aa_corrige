@@ -189,8 +189,10 @@ bool CBP(char* requete, char* reponse, int socket)
         strcpy(startDate, strtok(NULL, "#"));
         strcpy(endDate, strtok(NULL, "#"));
         
-        printf("\t[THREAD %lu] SEARCH_CONSULTATIONS: %s, %s, %s, %s\n", 
+        printf("\t[THREAD %lu] SEARCH_CONSULTATIONS: '%s', '%s', '%s', '%s'\n", 
                (unsigned long)pthread_self(), specialty, doctor, startDate, endDate);
+        printf("\t[DEBUG] Longueurs: specialty=%lu, doctor=%lu, startDate=%lu, endDate=%lu\n",
+               strlen(specialty), strlen(doctor), strlen(startDate), strlen(endDate));
         
         if (estPresent(socket) == -1)
         {
@@ -202,6 +204,7 @@ bool CBP(char* requete, char* reponse, int socket)
             pthread_mutex_lock(&mutexBD);
             if (connexionBD == NULL && connecterBD() != 0)
             {
+                printf("Erreur de connexion à la base de données\n");
                 pthread_mutex_unlock(&mutexBD);
                 sprintf(reponse, SEARCH_CONSULTATIONS "#" KO "#Erreur connexion BD !");
             }
@@ -213,22 +216,69 @@ bool CBP(char* requete, char* reponse, int socket)
                 char requete[1024];
                 
                 // Construction de la requête SQL
-                sprintf(requete, 
-                    "SELECT c.id, CONCAT(d.last_name, ' ', d.first_name) as docteur, s.name as specialite, c.date, c.hour "
-                    "FROM consultations c "
-                    "JOIN doctors d ON c.doctor_id = d.id "
-                    "JOIN specialties s ON d.specialty_id = s.id "
-                    "WHERE c.patient_id IS NULL "
-                    "AND ('%s' = '--- TOUTES ---' OR s.name = '%s') "
-                    "AND ('%s' = '--- TOUS ---' OR CONCAT(d.last_name, ' ', d.first_name) = '%s') "
-                    "AND c.date >= '%s' AND c.date <= '%s' "
-                    "ORDER BY c.date, c.hour",
-                    specialty, specialty, doctor, doctor, startDate, endDate);
+                if (strcmp(specialty, "--- TOUTES ---") == 0 && strcmp(doctor, "--- TOUS ---") == 0)
+                {
+                    // Cas où on cherche toutes les spécialités et tous les docteurs
+                    sprintf(requete, 
+                        "SELECT c.id, CONCAT(d.last_name, ' ', d.first_name) as docteur, s.name as specialite, c.date, c.hour "
+                        "FROM consultations c "
+                        "JOIN doctors d ON c.doctor_id = d.id "
+                        "JOIN specialties s ON d.specialty_id = s.id "
+                        "WHERE c.patient_id IS NULL "
+                        "AND c.date >= '%s' AND c.date <= '%s' "
+                        "ORDER BY c.date, c.hour",
+                        startDate, endDate);
+                }
+                else if (strcmp(specialty, "--- TOUTES ---") == 0)
+                {
+                    // Cas où on cherche toutes les spécialités mais un docteur spécifique
+                    sprintf(requete, 
+                        "SELECT c.id, CONCAT(d.last_name, ' ', d.first_name) as docteur, s.name as specialite, c.date, c.hour "
+                        "FROM consultations c "
+                        "JOIN doctors d ON c.doctor_id = d.id "
+                        "JOIN specialties s ON d.specialty_id = s.id "
+                        "WHERE c.patient_id IS NULL "
+                        "AND CONCAT(d.last_name, ' ', d.first_name) = '%s' "
+                        "AND c.date >= '%s' AND c.date <= '%s' "
+                        "ORDER BY c.date, c.hour",
+                        doctor, startDate, endDate);
+                }
+                else if (strcmp(doctor, "--- TOUS ---") == 0)
+                {
+                    // Cas où on cherche une spécialité spécifique mais tous les docteurs
+                    sprintf(requete, 
+                        "SELECT c.id, CONCAT(d.last_name, ' ', d.first_name) as docteur, s.name as specialite, c.date, c.hour "
+                        "FROM consultations c "
+                        "JOIN doctors d ON c.doctor_id = d.id "
+                        "JOIN specialties s ON d.specialty_id = s.id "
+                        "WHERE c.patient_id IS NULL "
+                        "AND s.name = '%s' "
+                        "AND c.date >= '%s' AND c.date <= '%s' "
+                        "ORDER BY c.date, c.hour",
+                        specialty, startDate, endDate);
+                }
+                else
+                {
+                    // Cas où on cherche une spécialité et un docteur spécifiques
+                    sprintf(requete, 
+                        "SELECT c.id, CONCAT(d.last_name, ' ', d.first_name) as docteur, s.name as specialite, c.date, c.hour "
+                        "FROM consultations c "
+                        "JOIN doctors d ON c.doctor_id = d.id "
+                        "JOIN specialties s ON d.specialty_id = s.id "
+                        "WHERE c.patient_id IS NULL "
+                        "AND s.name = '%s' "
+                        "AND CONCAT(d.last_name, ' ', d.first_name) = '%s' "
+                        "AND c.date >= '%s' AND c.date <= '%s' "
+                        "ORDER BY c.date, c.hour",
+                        specialty, doctor, startDate, endDate);
+                }
                 
+                printf("Requête SQL: %s\n", requete);
                 if (mysql_query(connexionBD, requete))
                 {
+                    printf("Erreur MySQL: %s\n", mysql_error(connexionBD));
                     pthread_mutex_unlock(&mutexBD);
-                    sprintf(reponse, SEARCH_CONSULTATIONS "#" KO "#Erreur requête BD !");
+                    sprintf(reponse, SEARCH_CONSULTATIONS "#" KO "#Erreur requête BD: %s", mysql_error(connexionBD));
                 }
                 else
                 {
