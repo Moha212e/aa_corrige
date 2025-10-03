@@ -1,9 +1,7 @@
-
-# Compiler
 CXX = g++
 
 # Compiler flags
-CXXFLAGS = -Wall -Wextra -std=c++11
+CXXFLAGS = -Wall -Wextra -std=c++11 -g
 
 # Directories
 BD_DIR = BD_Hospital
@@ -33,66 +31,27 @@ SERVEUR_BIN = $(SERVEUR_DIR)/serveur
 MYSQL_CFLAGS = -I/usr/include/mysql
 MYSQL_LIBS = -lmysqlclient -lpthread -lz -lm -lrt -lssl -lcrypto -ldl
 
+# Include directories for headers
+INCLUDES = -I$(UTIL_DIR) -I$(SOCKET_DIR) -I$(PROTOCOLE_DIR)
+
 # Qt flags (adjust if needed)
 QT_FLAGS = `pkg-config --cflags --libs Qt5Widgets`
 
-# Default target
-all: bin $(BD_BIN) $(CLIENT_BIN) $(SERVEUR_BIN)
-
-# Help target
-help:
-	@echo "Makefile pour le projet Hospital Consultation Booker"
-	@echo ""
-	@echo "Cibles disponibles:"
-	@echo "  all         - Compile tous les exécutables"
-	@echo "  initdb      - Compile et exécute CreationBD pour initialiser la base de données"
-	@echo "  setup       - Compile tout et initialise la base de données"
-	@echo "  run-serveur - Lance le serveur"
-	@echo "  run-client  - Lance le client Qt"
-	@echo "  clean       - Supprime tous les fichiers compilés"
-	@echo "  rebuild     - Clean + compile tout"
-	@echo "  help        - Affiche cette aide"
-	@echo ""
-	@echo "Utilisation recommandée:"
-	@echo "  1. make setup     (première fois)"
-	@echo "  2. make run-serveur (dans un terminal)"
-	@echo "  3. make run-client  (dans un autre terminal)"
-
-# Create and initialize database
-initdb: $(BD_BIN)
+# Default target: build everything and initialize database
+default: $(BD_BIN) $(CLIENT_BIN) $(SERVEUR_BIN)
 	@echo "Création et initialisation de la base de données..."
-	./$(BD_BIN)
-	@echo "Base de données initialisée avec succès!"
 
-# Create bin directory
-bin:
+FORCE:
 
-$(BD_BIN): $(BD_SRC)
-	$(CXX) $(CXXFLAGS) -o $@ $< $(MYSQL_CFLAGS) -m64 -L/usr/lib64/mysql $(MYSQL_LIBS)
+$(BD_BIN): FORCE $(BD_SRC)
+	$(CXX) $(CXXFLAGS) $(INCLUDES) -o $@ $(BD_SRC) $(MYSQL_CFLAGS) -m64 -L/usr/lib64/mysql $(MYSQL_LIBS)
 
-$(CLIENT_BIN): $(CLIENT_SRC) $(SOCKET_HEADERS) $(UTIL_HEADERS)
-	$(CXX) $(CXXFLAGS) -fPIC -o $@ $(CLIENT_SRC) $(QT_FLAGS)
+$(CLIENT_BIN): FORCE $(CLIENT_SRC) $(SOCKET_HEADERS) $(UTIL_HEADERS)
+	$(CXX) $(CXXFLAGS) $(INCLUDES) -fPIC -o $@ $(CLIENT_SRC) $(QT_FLAGS)
 
-$(SERVEUR_BIN): $(SERVEUR_SRC) $(SOCKET_HEADERS) $(PROTOCOLE_HEADERS) $(UTIL_HEADERS)
-	$(CXX) $(CXXFLAGS) -o $@ $(SERVEUR_SRC) -lpthread $(MYSQL_CFLAGS) -m64 -L/usr/lib64/mysql $(MYSQL_LIBS)
+$(SERVEUR_BIN): FORCE $(SERVEUR_SRC) $(SOCKET_HEADERS) $(PROTOCOLE_HEADERS) $(UTIL_HEADERS)
+	$(CXX) $(CXXFLAGS) $(INCLUDES) -o $@ $(SERVEUR_SRC) -lpthread $(MYSQL_CFLAGS) -m64 -L/usr/lib64/mysql $(MYSQL_LIBS)
 
 clean:
-	rm -f $(BD_BIN) $(CLIENT_BIN) $(SERVEUR_BIN)
+	rm -f $(BD_BIN) $(CLIENT_BIN) $(SERVEUR_BIN) $(BD_DIR)/*.o $(CLIENT_DIR)/*.o $(SOCKET_DIR)/*.o $(SERVEUR_DIR)/*.o $(PROTOCOLE_DIR)/*.o $(UTIL_DIR)/*.o
 
-# Clean and rebuild everything
-rebuild: clean all
-
-# Full setup: build everything and initialize database
-setup: all initdb
-
-# Run server (after building)
-run-serveur: $(SERVEUR_BIN)
-	@echo "Lancement du serveur..."
-	./$(SERVEUR_BIN)
-
-# Run client (after building)
-run-client: $(CLIENT_BIN)
-	@echo "Lancement du client..."
-	./$(CLIENT_BIN)
-
-.PHONY: all clean bin initdb rebuild setup run-serveur run-client help

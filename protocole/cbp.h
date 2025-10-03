@@ -21,7 +21,7 @@
  * - Formate la réponse selon le protocole CBP
  * - Gère les erreurs et les cas d'exception
  */
-bool CBP(char* requete, char* reponse, int socket);
+int CBP(char* requete, char* reponse, int socket);
 
 /**
  * Fonction d'authentification des utilisateurs
@@ -40,7 +40,7 @@ bool CBP(char* requete, char* reponse, int socket);
  * 
  * Note: Version simplifiée avec utilisateurs hardcodés (wagner/abc123, charlet/xyz456)
  */
-bool CBP_Login(const char* user, const char* password);
+int CBP_Login(const char* nom, const char* prenom);
 
 /**
  * Fonction de calcul mathématique (fonction utilitaire)

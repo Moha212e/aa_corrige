@@ -6,6 +6,7 @@
 #include <pthread.h>
 #include "../TCP/TCP.h"
 #include "../protocole/cbp.h"
+#include "../util/const.h"
 
 /**
  * Gestionnaire de signal pour l'arrêt propre du serveur
@@ -280,50 +281,55 @@ void HandlerSIGINT(int s)
  */
 void TraitementConnexion(int sService)
 {
-    char requete[200], reponse[200];
-    int nbLus, nbEcrits;
-    bool onContinue = true;
-    
-    while (onContinue)
-    {
-        printf("\t[THREAD %lu] Attente requete...\n", (unsigned long)pthread_self());
-        
-        // ***** Reception Requete ******************
-        if ((nbLus = Receive(sService, requete)) < 0)
+        char requete[200], reponse[200];
+        int nbLus, nbEcrits;
+        int status = SUCCES;
+
+        while (1)
         {
-            perror("Erreur de Receive");
-            close(sService);
-            return; // Seulement fermer cette connexion, pas tout le serveur
+            printf("\t[THREAD %lu] Attente requete...\n", (unsigned long)pthread_self());
+
+            // ***** Reception Requete ******************
+            if ((nbLus = Receive(sService, requete)) < 0)
+            {
+                perror("Erreur de Receive");
+                close(sService);
+                return; // Seulement fermer cette connexion, pas tout le serveur
+            }
+
+            // ***** Fin de connexion ? *****************
+            if (nbLus == 0)
+            {
+                printf("\t[THREAD %lu] Fin de connexion du client.\n", (unsigned long)pthread_self());
+                close(sService);
+                return;
+            }
+
+            requete[nbLus] = 0;
+            printf("\t[THREAD %lu] Requete recue = %s\n", (unsigned long)pthread_self(), requete);
+
+            // ***** Traitement de la requete ***********
+            status = CBP(requete, reponse, sService);
+
+            // ***** Envoi de la reponse ****************
+            if ((nbEcrits = Send(sService, reponse, strlen(reponse))) < 0)
+            {
+                perror("Erreur de Send");
+                close(sService);
+                return; // Seulement fermer cette connexion, pas tout le serveur
+            }
+
+            printf("\t[THREAD %lu] Reponse envoyee = %s\n", (unsigned long)pthread_self(), reponse);
+
+            // ***** Décision de fermeture **************
+            if (status == FERMER_CONNEXION)
+            {
+                printf("\t[THREAD %lu] Fin de connexion de la socket %d\n", 
+                       (unsigned long)pthread_self(), sService);
+                close(sService);
+                return;
+            }
         }
-        
-        // ***** Fin de connexion ? *****************
-        if (nbLus == 0)
-        {
-            printf("\t[THREAD %lu] Fin de connexion du client.\n", (unsigned long)pthread_self());
-            close(sService);
-            return;
-        }
-        
-        requete[nbLus] = 0;
-        printf("\t[THREAD %lu] Requete recue = %s\n", (unsigned long)pthread_self(), requete);
-        
-        // ***** Traitement de la requete ***********
-        onContinue = CBP(requete, reponse, sService);
-        
-        // ***** Envoi de la reponse ****************
-        if ((nbEcrits = Send(sService, reponse, strlen(reponse))) < 0)
-        {
-            perror("Erreur de Send");
-            close(sService);
-            return; // Seulement fermer cette connexion, pas tout le serveur
-        }
-        
-        printf("\t[THREAD %lu] Reponse envoyee = %s\n", (unsigned long)pthread_self(), reponse);
-        
-        if (!onContinue)
-            printf("\t[THREAD %lu] Fin de connexion de la socket %d\n", 
-                   (unsigned long)pthread_self(), sService);
-    }
 }
 
 // Fonction de chargement de la configuration

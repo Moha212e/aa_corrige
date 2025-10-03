@@ -26,7 +26,7 @@ pthread_mutex_t mutexBD = PTHREAD_MUTEX_INITIALIZER;
 int connecterBD();
 void deconnecterBD(); 
 //***** Parsing de la requete et creation de la reponse *************
-bool CBP(char* requete, char* reponse, int socket)
+int CBP(char* requete, char* reponse, int socket)
 {
     // ***** Récupération nom de la requete *****************
     char *ptr = strtok(requete, "#");
@@ -34,27 +34,46 @@ bool CBP(char* requete, char* reponse, int socket)
     // ***** LOGIN ******************************************
     if (strcmp(ptr, LOGIN) == 0)
     {
-        char user[50], password[50];
-        strcpy(user, strtok(NULL, "#"));
-        strcpy(password, strtok(NULL, "#"));
-        printf("\t[THREAD %lu] LOGIN de %s\n", (unsigned long)pthread_self(), user);
+        char nom[50], prenom[50], patientId[10], nouveauPatient[2];
+        strcpy(nom, strtok(NULL, "#"));
+        strcpy(prenom, strtok(NULL, "#"));
+        strcpy(patientId, strtok(NULL, "#"));
+        strcpy(nouveauPatient, strtok(NULL, "#"));
+        printf("\t[THREAD %lu] LOGIN de %s %s (ID: %s, Nouveau: %s)\n", (unsigned long)pthread_self(), nom, prenom, patientId, nouveauPatient);
         
         if (estPresent(socket) >= 0)  // client déjà loggé
         {
             sprintf(reponse, LOGIN "#" KO "#Client déjà loggé !");
-            return false;
+            return SUCCES; // Ne pas fermer la connexion, juste refuser le login
         }
         else
         {
-            if (CBP_Login(user, password))
-            {
-                sprintf(reponse, LOGIN "#" OK "#"); // TODO: ajouter le numéro de patient
+            if(strcmp(nouveauPatient, "0") == 0){
+                // Patient existant - vérifier les identifiants (nom = user, prenom = password pour simplifier)
+                int loginResult = CBP_Login(nom, prenom);
+                switch(loginResult) {
+                    case SUCCES: // Succès
+                        sprintf(reponse, LOGIN "#" OK "#");
+                        ajoute(socket);
+                        return SUCCES;
+                    case MAUVAIS_IDENTIFIANTS: // Mauvais identifiants
+                        sprintf(reponse, LOGIN "#" KO "#Mauvais identifiants !");
+                        return SUCCES; // Ne pas fermer la connexion
+                    case PATIENT_NON_TROUVE: // Patient non trouvé
+                        sprintf(reponse, LOGIN "#" KO "#Patient non trouvé !");
+                        return SUCCES; // Ne pas fermer la connexion
+                    case ERREUR_BD: // Erreur BD
+                        sprintf(reponse, LOGIN "#" KO "#Erreur de connexion BD !");
+                        return SUCCES; // Ne pas fermer la connexion
+                    default:
+                        sprintf(reponse, LOGIN "#" KO "#Erreur inconnue !");
+                        return SUCCES; // Ne pas fermer la connexion
+                }
+            }else {
+                // Nouveau patient - ajouter directement
                 ajoute(socket);
-            }
-            else
-            {
-                sprintf(reponse, LOGIN "#" KO "#Mauvais identifiants !");
-                return false;
+                sprintf(reponse, LOGIN "#" OK "#");
+                return SUCCES;
             }
         }
     }
@@ -65,7 +84,7 @@ bool CBP(char* requete, char* reponse, int socket)
         printf("\t[THREAD %lu] LOGOUT\n", (unsigned long)pthread_self());
         retire(socket);
         sprintf(reponse, LOGOUT "#" OK "#");
-        return false;
+        return FERMER_CONNEXION; // Fermer la connexion après LOGOUT
     }
     
     // ***** GET_SPECIALTIES ********************************
@@ -389,14 +408,20 @@ bool CBP(char* requete, char* reponse, int socket)
         }
     }
     
-    return true;
+    return SUCCES;
 } 
 //***** Traitement des requetes *************************************
-bool CBP_Login(const char* user, const char* password)
+int CBP_Login(const char* nom, const char* prenom)
 {
-    if (strcmp(user, "wagner") == 0 && strcmp(password, "abc123") == 0) return true;
-    if (strcmp(user, "charlet") == 0 && strcmp(password, "xyz456") == 0) return true;
-    return false;
+    // Codes de retour :
+    // 0 = Succès
+    // 1 = Mauvais identifiants
+    // 2 = Patient non trouvé
+    // 3 = Erreur de connexion BD
+    
+    if (strcmp(nom, "wagner") == 0 && strcmp(prenom, "abc123") == 0) return SUCCES;
+    if (strcmp(nom, "charlet") == 0 && strcmp(prenom, "xyz456") == 0) return SUCCES;
+    return MAUVAIS_IDENTIFIANTS; // Mauvais identifiants
 }
 
 int CBP_Operation(char op, int a, int b)
@@ -406,10 +431,10 @@ int CBP_Operation(char op, int a, int b)
     if (op == '*') return a * b;
     if (op == '/')
     {
-        if (b == 0) throw 1;
+        if (b == 0) throw ERREUR_INCONNUE;
         return a / b;
     }
-    return 0;
+    return ERREUR_INCONNUE;
 }
 
 //***** Gestion de l'état du protocole ******************************

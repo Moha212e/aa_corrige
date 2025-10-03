@@ -255,5 +255,8 @@ private:
     bool connecte;
     string ipServeur = "127.0.0.1";
     int portServeur = 8080;
+
+protected:
+    void closeEvent(QCloseEvent* event) override;
 };
 #endif // MAINWINDOWCLIENTCONSULTATIONBOOKER_H

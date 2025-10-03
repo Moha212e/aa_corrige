@@ -43,6 +43,7 @@ MainWindowClientConsultationBooker::MainWindowClientConsultationBooker(QWidget *
 
 MainWindowClientConsultationBooker::~MainWindowClientConsultationBooker()
 {
+    // Fermeture silencieuse: on ferme juste le socket sans envoyer LOGOUT
     deconnecterServeur();
     delete ui;
 }
@@ -301,6 +302,13 @@ bool MainWindowClientConsultationBooker::envoyerRequete(const string& requete, s
     cout << "Requête: " << requete << endl;
     cout << "Réponse: " << reponse << endl;
     return true;
+}
+
+void MainWindowClientConsultationBooker::closeEvent(QCloseEvent* event)
+{
+    // À la fermeture de la fenêtre, on ferme uniquement la socket
+    deconnecterServeur();
+    QMainWindow::closeEvent(event);
 }
 
 bool MainWindowClientConsultationBooker::estConnecte() const

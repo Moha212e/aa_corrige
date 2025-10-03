@@ -26,4 +26,15 @@
 #define DEFAULT_DATE_FORMAT "yyyy-MM-dd"
 #define DEFAULT_DATE_DEBUT "2025-09-15"
 #define DEFAULT_DATE_FIN "2025-12-31"
+
+#define NOUVEAU_PATIENT "1"
+#define PATIENT_EXISTANT "0"
+
+#define SUCCES 0
+#define MAUVAIS_IDENTIFIANTS 1
+#define PATIENT_NON_TROUVE 2
+#define ERREUR_BD 3
+#define ERREUR_INCONNUE 4
+// Code générique pour indiquer au serveur de fermer la connexion
+#define FERMER_CONNEXION 99
 // constantes pour les requêtes de base de données
