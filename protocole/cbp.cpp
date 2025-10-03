@@ -9,7 +9,6 @@
 #include <cstddef>
 #include <cstring>
 
-//***** Etat du protocole : liste des clients loggés ****************
 typedef struct {
     int socket;
     int patientId;
@@ -27,13 +26,11 @@ void retire(int socket);
 
 pthread_mutex_t mutexClients = PTHREAD_MUTEX_INITIALIZER;
 
-//***** Connexion à la base de données ******************************
 MYSQL* connexionBD = NULL;
 pthread_mutex_t mutexBD = PTHREAD_MUTEX_INITIALIZER;
 
 int connecterBD();
 void deconnecterBD(); 
-//***** Fonctions utilitaires ***************************************
 bool verifierAuthentification(int socket, const char* commande, char* reponse)
 {
     if (estPresent(socket) == -1) {
@@ -84,12 +81,10 @@ bool executerRequeteBD(const char* commande, const char* requeteSQL, char* repon
     return true;
 }
 
-//***** Parsing de la requete et creation de la reponse *************
 bool CBP(char* requete, char* reponse, int socket)
 {
     char *ptr = strtok(requete, "#");
     
-    // ***** LOGIN ******************************************
     if (strcmp(ptr, LOGIN) == 0) {
         char nom[MAX_NAME_LEN], prenom[MAX_NAME_LEN], numeroPatientStr[MAX_ID_LEN], nouveauPatientStr[FLAG_LEN];
         int numeroPatient, nouveauPatient, patientId;
@@ -136,7 +131,6 @@ bool CBP(char* requete, char* reponse, int socket)
         }
     }
     
-    // ***** LOGOUT *****************************************
     else if (strcmp(ptr, LOGOUT) == 0) {
         printf("\t[THREAD %lu] LOGOUT\n", (unsigned long)pthread_self());
         retire(socket);
@@ -144,7 +138,6 @@ bool CBP(char* requete, char* reponse, int socket)
         return false;
     }
     
-    // ***** GET_SPECIALTIES ********************************
     else if (strcmp(ptr, GET_SPECIALTIES) == 0) {
         printf("\t[THREAD %lu] GET_SPECIALTIES\n", (unsigned long)pthread_self());
         if (!verifierAuthentification(socket, GET_SPECIALTIES, reponse)) return true;
@@ -153,7 +146,6 @@ bool CBP(char* requete, char* reponse, int socket)
         executerRequeteBD(GET_SPECIALTIES, "SELECT id, name FROM specialties ORDER BY name", reponse, temp);
     }
     
-    // ***** GET_DOCTORS ************************************
     else if (strcmp(ptr, GET_DOCTORS) == 0) {
         printf("\t[THREAD %lu] GET_DOCTORS\n", (unsigned long)pthread_self());
         if (!verifierAuthentification(socket, GET_DOCTORS, reponse)) return true;
@@ -165,7 +157,6 @@ bool CBP(char* requete, char* reponse, int socket)
             reponse, temp);
     }
     
-    // ***** SEARCH_CONSULTATIONS ***************************
     else if (strcmp(ptr, SEARCH_CONSULTATIONS) == 0) {
         char specialty[MAX_NAME_LEN], doctor[MAX_NAME_LEN], startDate[20], endDate[20];
         strcpy(specialty, strtok(NULL, "#"));
@@ -189,7 +180,6 @@ bool CBP(char* requete, char* reponse, int socket)
         executerRequeteBD(SEARCH_CONSULTATIONS, requeteSQL, reponse, temp);
     }
     
-    // ***** BOOK_CONSULTATION ******************************
     else if (strcmp(ptr, BOOK_CONSULTATION) == 0) {
         char consultationId[MAX_ID_LEN], reason[SMALL_BUF];
         strcpy(consultationId, strtok(NULL, "#"));
@@ -230,7 +220,6 @@ bool CBP(char* requete, char* reponse, int socket)
     
     return true;
 } 
-//***** Traitement des requetes *************************************
 int CBP_Login(const char* nom, const char* prenom, int numeroPatient, int nouveauPatient, int* patientId)
 {
     pthread_mutex_lock(&mutexBD);
@@ -245,7 +234,6 @@ int CBP_Login(const char* nom, const char* prenom, int numeroPatient, int nouvea
     MYSQL_ROW ligne;
     
     if (nouveauPatient) {
-        // ***** NOUVEAU PATIENT - Créer en BD *****
         sprintf(requeteSQL, 
             "INSERT INTO patients (last_name, first_name, birth_date) VALUES ('%s', '%s', '1900-01-01')", 
             nom, prenom);
@@ -259,9 +247,7 @@ int CBP_Login(const char* nom, const char* prenom, int numeroPatient, int nouvea
         *patientId = (int)mysql_insert_id(connexionBD);
         pthread_mutex_unlock(&mutexBD);
         return SUCCES;
-    }
-    else {
-        // ***** PATIENT EXISTANT - Vérifier en BD *****
+    } else {
         sprintf(requeteSQL, 
             "SELECT id FROM patients WHERE last_name = '%s' AND first_name = '%s' AND id = %d", 
             nom, prenom, numeroPatient);
@@ -300,7 +286,6 @@ int CBP_Operation(char op, int a, int b)
     return 0;
 }
 
-//***** Gestion de l'état du protocole ******************************
 int estPresent(int socket)
 {
     int indice = -1;
@@ -334,7 +319,6 @@ void retire(int socket)
     pthread_mutex_unlock(&mutexClients);
 }
 
-//***** Fin prématurée **********************************************
 void CBP_Close()
 {
     pthread_mutex_lock(&mutexClients);
@@ -345,7 +329,6 @@ void CBP_Close()
     deconnecterBD();
 }
 
-//***** Fonctions de connexion à la base de données ****************
 int connecterBD()
 {
     if (connexionBD != NULL)
@@ -380,7 +363,6 @@ void deconnecterBD()
     }
 }
 
-//***** Fonction pour client admin Java *****************************
 int CBP_GetPatientsConnectes(char* buffer, int tailleBuff)
 {
     pthread_mutex_lock(&mutexClients);
@@ -395,7 +377,7 @@ int CBP_GetPatientsConnectes(char* buffer, int tailleBuff)
                 clients[i].prenom,
                 clients[i].ip);
         
-        if (strlen(buffer) + strlen(lignePatient) < tailleBuff - 1) {
+        if (strlen(buffer) + strlen(lignePatient) < (size_t)(tailleBuff - 1)) {
             strcat(buffer, lignePatient);
         }
     }

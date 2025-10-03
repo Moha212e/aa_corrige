@@ -6,13 +6,12 @@
 #include <string.h>
 int Send(int sSocket, const char *data, int taille)
 {
-    // Ajouter le caractère de fin de transmission
     char message[TAILLE_MAX + 1];
     strncpy(message, data, taille);
-    message[taille] = '\n'; // Caractère de fin de transmission
+    message[taille] = '\n';
     
     int totalEnvoye = 0;
-    int tailleComplete = taille + 1; // +1 pour le \n
+    int tailleComplete = taille + 1;
     while (totalEnvoye < tailleComplete) {
         int envoye = send(sSocket, message + totalEnvoye, tailleComplete - totalEnvoye, 0);
         if (envoye <= 0) return -1;
@@ -32,26 +31,23 @@ int Receive(int sSocket, char *data)
         
         totalRecu += recu;
         
-        // Chercher le caractère de fin de transmission dans le buffer
         for (int i = 0; i < totalRecu; i++) {
             if (buffer[i] == '\n') {
-                // Trouvé ! Copier le message sans le \n
                 buffer[i] = '\0';
                 strcpy(data, buffer);
-                return i; // Retourner la taille du message sans le \n
+                return i;
             }
         }
     }
     
-    // Si on arrive ici, le message est trop long
     return -1;
 }
 int ServerSocket(int port)
 {
-    int sSocket; // socket de la connexion serveur descriptor (file descriptor)
+    int sSocket;
     struct sockaddr_in adresseServeur;
 
-    sSocket = socket(AF_INET, SOCK_STREAM, 0); // création du socket de la connexion serveur TCP (SOCK_STREAM)
+    sSocket = socket(AF_INET, SOCK_STREAM, 0);
     if (sSocket < 0) return -1;
 
     adresseServeur.sin_family = AF_INET;

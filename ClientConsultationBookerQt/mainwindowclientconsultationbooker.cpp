@@ -16,13 +16,11 @@ MainWindowClientConsultationBooker::MainWindowClientConsultationBooker(QWidget *
     ui->setupUi(this);
     logoutOk();
     
-    // Connexion automatique au serveur
     if (!connecterServeur(ipServeur, portServeur))
     {
         dialogError("Erreur", "Impossible de se connecter au serveur");
     }
 
-    // Configuration de la table des employes (Personnel Garage)
     ui->tableWidgetConsultations->setColumnCount(COL_COUNT_CONSULTATIONS);
     ui->tableWidgetConsultations->setRowCount(0);
     QStringList labelsTableConsultations;
@@ -43,14 +41,10 @@ MainWindowClientConsultationBooker::MainWindowClientConsultationBooker(QWidget *
 
 MainWindowClientConsultationBooker::~MainWindowClientConsultationBooker()
 {
-    // Fermeture silencieuse: on ferme juste le socket sans envoyer LOGOUT
     deconnecterServeur();
     delete ui;
 }
 
-///////////////////////////////////////////////////////////////////////////////////////////////////////////////
-///// Fonctions utiles Table des livres encodés (ne pas modifier) ////////////////////////////////////////////
-/////////////////////////////////////////////////////////////////////////////////////////////////////////////
 void MainWindowClientConsultationBooker::addTupleTableConsultations(int id,
                                                                     string specialty,
                                                                     string doctor,
@@ -62,43 +56,36 @@ void MainWindowClientConsultationBooker::addTupleTableConsultations(int id,
     ui->tableWidgetConsultations->setRowCount(nb);
     ui->tableWidgetConsultations->setRowHeight(nb-1,10);
 
-    // id
     QTableWidgetItem *item = new QTableWidgetItem;
     item->setTextAlignment(Qt::AlignCenter);
     item->setText(QString::number(id));
     ui->tableWidgetConsultations->setItem(nb-1,0,item);
 
-    // specialty
     item = new QTableWidgetItem;
     item->setTextAlignment(Qt::AlignCenter);
     item->setText(QString::fromStdString(specialty));
     ui->tableWidgetConsultations->setItem(nb-1,1,item);
 
-    // doctor
     item = new QTableWidgetItem;
     item->setTextAlignment(Qt::AlignCenter);
     item->setText(QString::fromStdString(doctor));
     ui->tableWidgetConsultations->setItem(nb-1,2,item);
 
-    // date
     item = new QTableWidgetItem;
     item->setTextAlignment(Qt::AlignCenter);
     item->setText(QString::fromStdString(date));
     ui->tableWidgetConsultations->setItem(nb-1,3,item);
 
-    // hour
     item = new QTableWidgetItem;
     item->setTextAlignment(Qt::AlignCenter);
     item->setText(QString::fromStdString(hour));
     ui->tableWidgetConsultations->setItem(nb-1,4,item);
 }
 
-///////////////////////////////////////////////////////////////////////////////////////////////////////////////
 void MainWindowClientConsultationBooker::clearTableConsultations() {
     ui->tableWidgetConsultations->setRowCount(0);
 }
 
-/////////////////////////////////////////////////////////////////////////////////////////////////////////////
 int MainWindowClientConsultationBooker::getSelectionIndexTableConsultations() const
 {
     QModelIndexList list = ui->tableWidgetConsultations->selectionModel()->selectedRows();
@@ -108,9 +95,6 @@ int MainWindowClientConsultationBooker::getSelectionIndexTableConsultations() co
     return ind;
 }
 
-///////////////////////////////////////////////////////////////////////////////////////////////////////////////
-///// Fonctions utiles des comboboxes (ne pas modifier) //////////////////////////////////////////////////////
-/////////////////////////////////////////////////////////////////////////////////////////////////////////////
 void MainWindowClientConsultationBooker::addComboBoxSpecialties(string specialty) {
     ui->comboBoxSpecialties->addItem(QString::fromStdString(specialty));
 }
@@ -137,9 +121,6 @@ void MainWindowClientConsultationBooker::clearComboBoxDoctors() {
     this->addComboBoxDoctors(TOUS);
 }
 
-///////////////////////////////////////////////////////////////////////////////////////////////////////////////
-///// Fonction utiles de la fenêtre (ne pas modifier) ////////////////////////////////////////////////////////
-/////////////////////////////////////////////////////////////////////////////////////////////////////////////
 string MainWindowClientConsultationBooker::getLastName() const {
     return ui->lineEditLastName->text().toStdString();
 }
@@ -221,31 +202,22 @@ void MainWindowClientConsultationBooker::logoutOk() {
     clearTableConsultations();
 }
 
-///////////////////////////////////////////////////////////////////////////////////////////////////////////////
-///// Fonctions permettant d'afficher des boites de dialogue (ne pas modifier) ///////////////////////////////
-/////////////////////////////////////////////////////////////////////////////////////////////////////////////
 void MainWindowClientConsultationBooker::dialogMessage(const string& title,const string& message) {
    QMessageBox::information(this,QString::fromStdString(title),QString::fromStdString(message));
 }
 
-/////////////////////////////////////////////////////////////////////////////////////////////////////////////
 void MainWindowClientConsultationBooker::dialogError(const string& title,const string& message) {
    QMessageBox::critical(this,QString::fromStdString(title),QString::fromStdString(message));
 }
 
-/////////////////////////////////////////////////////////////////////////////////////////////////////////////
 string MainWindowClientConsultationBooker::dialogInputText(const string& title,const string& question) {
     return QInputDialog::getText(this,QString::fromStdString(title),QString::fromStdString(question)).toStdString();
 }
 
-/////////////////////////////////////////////////////////////////////////////////////////////////////////////
 int MainWindowClientConsultationBooker::dialogInputInt(const string& title,const string& question) {
     return QInputDialog::getInt(this,QString::fromStdString(title),QString::fromStdString(question));
 }
 
-///////////////////////////////////////////////////////////////////////////////////////////////////////////////
-///// Fonctions de communication réseau //////////////////////////////////////////////////////////////////////
-///////////////////////////////////////////////////////////////////////////////////////////////////////////////
 bool MainWindowClientConsultationBooker::connecterServeur(const string& ipServeur, int port)
 {
     this->ipServeur = ipServeur;
@@ -282,14 +254,12 @@ bool MainWindowClientConsultationBooker::envoyerRequete(const string& requete, s
         return false;
     }
     
-    // Envoyer la requête
     if (Send(socketServeur, requete.c_str(), requete.length()) < 0)
     {
         cout << "Erreur envoi requête" << endl;
         return false;
     }
     
-    // Recevoir la réponse
     char buffer[1024];
     int nbRecu = Receive(socketServeur, buffer);
     if (nbRecu < 0)
@@ -306,7 +276,6 @@ bool MainWindowClientConsultationBooker::envoyerRequete(const string& requete, s
 
 void MainWindowClientConsultationBooker::closeEvent(QCloseEvent* event)
 {
-    // À la fermeture de la fenêtre, on ferme uniquement la socket
     deconnecterServeur();
     QMainWindow::closeEvent(event);
 }
@@ -316,9 +285,6 @@ bool MainWindowClientConsultationBooker::estConnecte() const
     return connecte;
 }
 
-///////////////////////////////////////////////////////////////////////////////////////////////////////////////
-///// Commandes CBP //////////////////////////////////////////////////////////////////////////////////////////
-///////////////////////////////////////////////////////////////////////////////////////////////////////////////
 bool MainWindowClientConsultationBooker::loginPatient(const string& nom, const string& prenom, int patientId, bool nouveauPatient)
 {
     string requete = string(LOGIN) + diez + nom + diez + prenom + diez + to_string(patientId) + diez + (nouveauPatient ? "1" : "0");
@@ -327,7 +293,6 @@ bool MainWindowClientConsultationBooker::loginPatient(const string& nom, const s
     if (!envoyerRequete(requete, reponse))
         return false;
     
-    // Parser la réponse
     if (reponse.find(string(LOGIN) + diez + string(OK)) == 0)
     {
         cout << "Login réussi" << endl;
@@ -359,11 +324,9 @@ bool MainWindowClientConsultationBooker::chargerSpecialties()
     
     if (reponse.find(string(GET_SPECIALTIES) + diez + string(OK)) == 0)
     {
-        // Parser et remplir la combo box
         clearComboBoxSpecialties();
         addComboBoxSpecialties(TOUTES);
         
-        // Extraire les spécialités de la réponse
         string data = reponse.substr(strlen(GET_SPECIALTIES) + 4); // Enlever "GET_SPECIALTIES#ok"
         size_t pos = 0;
         while ((pos = data.find(diez)) != string::npos)
@@ -401,11 +364,9 @@ bool MainWindowClientConsultationBooker::chargerDocteurs()
     
     if (reponse.find(string(GET_DOCTORS) + diez + string(OK)) == 0)
     {
-        // Parser et remplir la combo box
         clearComboBoxDoctors();
         addComboBoxDoctors(TOUS);
         
-        // Extraire les médecins de la réponse
         string data = reponse.substr(strlen(GET_DOCTORS) + 4); // Enlever "GET_DOCTORS#ok"
         size_t pos = 0;
         while ((pos = data.find(diez)) != string::npos)
@@ -444,13 +405,10 @@ bool MainWindowClientConsultationBooker::rechercherConsultations(const string& s
     
     if (reponse.find(string(SEARCH_CONSULTATIONS) + diez + string(OK)) == 0)
     {
-        // Parser et remplir la table
         clearTableConsultations();
         
-        // Extraire les consultations de la réponse
         string data = reponse.substr(strlen(SEARCH_CONSULTATIONS) + 4); // Enlever "SEARCH_CONSULTATIONS#ok"
         
-        // Diviser par les séparateurs | pour obtenir chaque consultation
         vector<string> consultations;
         size_t pos = 0;
         while ((pos = data.find(pipeSeparator)) != string::npos)
@@ -461,13 +419,11 @@ bool MainWindowClientConsultationBooker::rechercherConsultations(const string& s
         if (!data.empty())
             consultations.push_back(data);
         
-        // Parser chaque consultation
         for (const string& consultation : consultations)
         {
             string data = consultation;
             if (data.empty()) continue;
             
-            // Extraire les 5 champs: id, docteur, specialite, date, heure
             string champs[5];
             for (int i = 0; i < 5; i++)
             {
@@ -518,9 +474,6 @@ bool MainWindowClientConsultationBooker::reserverConsultation(int consultationId
     }
 }
 
-///////////////////////////////////////////////////////////////////////////////////////////////////////////////
-///// Fonctions gestion des boutons (TO DO) //////////////////////////////////////////////////////////////////
-/////////////////////////////////////////////////////////////////////////////////////////////////////////////
 void MainWindowClientConsultationBooker::on_pushButtonLogin_clicked()
 {
     string lastName = this->getLastName();
@@ -533,18 +486,15 @@ void MainWindowClientConsultationBooker::on_pushButtonLogin_clicked()
     cout << "patientId = " << patientId << endl;
     cout << "newPatient = " << newPatient << endl;
 
-    // Vérifier la connexion au serveur
     if (!estConnecte())
     {
         dialogError("Erreur", "Pas connecté au serveur");
         return;
     }
 
-    // Effectuer le login
     if (loginPatient(lastName, firstName, patientId, newPatient))
     {
         loginOk();
-        // Charger les données après login
         chargerSpecialties();
         chargerDocteurs();
     }
@@ -575,14 +525,12 @@ void MainWindowClientConsultationBooker::on_pushButtonRechercher_clicked()
     cout << "startDate = " << startDate << endl;
     cout << "endDate = " << endDate << endl;
 
-    // Vérifier la connexion au serveur
     if (!estConnecte())
     {
         dialogError("Erreur", "Pas connecté au serveur");
         return;
     }
 
-    // Effectuer la recherche
     if (rechercherConsultations(specialty, doctor, startDate, endDate))
     {
         dialogMessage("Recherche", "Recherche effectuée avec succès");
@@ -599,21 +547,18 @@ void MainWindowClientConsultationBooker::on_pushButtonReserver_clicked()
 
     cout << "selectedRow = " << selectedRow << endl;
 
-    // Vérifier qu'une consultation est sélectionnée
     if (selectedRow < 0)
     {
         dialogError("Erreur", "Veuillez sélectionner une consultation");
         return;
     }
 
-    // Vérifier la connexion au serveur
     if (!estConnecte())
     {
         dialogError("Erreur", "Pas connecté au serveur");
         return;
     }
 
-    // Demander la raison de la consultation
     string raison = dialogInputText("Réservation", "Raison de la consultation:");
     if (raison.empty())
     {
@@ -621,14 +566,11 @@ void MainWindowClientConsultationBooker::on_pushButtonReserver_clicked()
         return;
     }
 
-    // Récupérer l'ID de la consultation sélectionnée
     int consultationId = ui->tableWidgetConsultations->item(selectedRow, 0)->text().toInt();
 
-    // Effectuer la réservation
     if (reserverConsultation(consultationId, raison))
     {
         dialogMessage("Réservation", "Consultation réservée avec succès");
-        // Rafraîchir la liste des consultations
         on_pushButtonRechercher_clicked();
     }
     else
