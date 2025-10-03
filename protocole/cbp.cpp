@@ -413,15 +413,68 @@ int CBP(char* requete, char* reponse, int socket)
 //***** Traitement des requetes *************************************
 int CBP_Login(const char* nom, const char* prenom)
 {
-    // Codes de retour :
-    // 0 = Succès
-    // 1 = Mauvais identifiants
-    // 2 = Patient non trouvé
-    // 3 = Erreur de connexion BD
-    
-    if (strcmp(nom, "wagner") == 0 && strcmp(prenom, "abc123") == 0) return SUCCES;
-    if (strcmp(nom, "charlet") == 0 && strcmp(prenom, "xyz456") == 0) return SUCCES;
-    return MAUVAIS_IDENTIFIANTS; // Mauvais identifiants
+    // Vérifie dans la BD si (nom, prenom) correspond à un patient existant
+    // Règle:
+    // - 0 ligne avec ce nom  -> PATIENT_NON_TROUVE
+    // - >=1 ligne avec ce nom mais aucune avec ce prenom -> MAUVAIS_IDENTIFIANTS
+    // - >=1 ligne avec ce nom et ce prenom -> SUCCES
+
+    if (nom == NULL || prenom == NULL)
+        return ERREUR_INCONNUE;
+
+    int retour = ERREUR_INCONNUE;
+
+    pthread_mutex_lock(&mutexBD);
+    if (connexionBD == NULL && connecterBD() != 0)
+    {
+        pthread_mutex_unlock(&mutexBD);
+        return ERREUR_BD;
+    }
+
+    // Échapper les paramètres pour la requête SQL
+    char nomEsc[2 * MAX_NAME_LEN + 1];
+    char prenomEsc[2 * MAX_NAME_LEN + 1];
+    mysql_real_escape_string(connexionBD, nomEsc, nom, strlen(nom));
+    mysql_real_escape_string(connexionBD, prenomEsc, prenom, strlen(prenom));
+
+    MYSQL_RES* resultat = NULL;
+
+    // 1) Vérifier présence du nom de famille
+    char reqNom[BIG_BUF];
+    sprintf(reqNom, "SELECT id FROM patients WHERE last_name = '%s' LIMIT 1", nomEsc);
+    if (mysql_query(connexionBD, reqNom))
+    {
+        printf("Erreur MySQL (CBP_Login nom): %s\n", mysql_error(connexionBD));
+        pthread_mutex_unlock(&mutexBD);
+        return ERREUR_BD;
+    }
+    resultat = mysql_store_result(connexionBD);
+    my_ulonglong nbNom = resultat ? mysql_num_rows(resultat) : 0;
+    if (resultat) mysql_free_result(resultat);
+
+    if (nbNom == 0)
+    {
+        pthread_mutex_unlock(&mutexBD);
+        return PATIENT_NON_TROUVE;
+    }
+
+    // 2) Vérifier combinaison nom+prenom
+    char reqCombi[BIG_BUF];
+    sprintf(reqCombi, "SELECT id FROM patients WHERE last_name = '%s' AND first_name = '%s' LIMIT 1", nomEsc, prenomEsc);
+    if (mysql_query(connexionBD, reqCombi))
+    {
+        printf("Erreur MySQL (CBP_Login nom+prenom): %s\n", mysql_error(connexionBD));
+        pthread_mutex_unlock(&mutexBD);
+        return ERREUR_BD;
+    }
+    resultat = mysql_store_result(connexionBD);
+    my_ulonglong nbCombi = resultat ? mysql_num_rows(resultat) : 0;
+    if (resultat) mysql_free_result(resultat);
+
+    retour = (nbCombi > 0) ? SUCCES : MAUVAIS_IDENTIFIANTS;
+
+    pthread_mutex_unlock(&mutexBD);
+    return retour;
 }
 
 int CBP_Operation(char op, int a, int b)
