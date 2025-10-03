@@ -34,7 +34,7 @@ int CBP(char* requete, char* reponse, int socket)
     // ***** LOGIN ******************************************
     if (strcmp(ptr, LOGIN) == 0)
     {
-        char nom[50], prenom[50], patientId[10], nouveauPatient[2];
+        char nom[MAX_NAME_LEN], prenom[MAX_NAME_LEN], patientId[MAX_ID_LEN], nouveauPatient[FLAG_LEN];
         strcpy(nom, strtok(NULL, "#"));
         strcpy(prenom, strtok(NULL, "#"));
         strcpy(patientId, strtok(NULL, "#"));
@@ -110,7 +110,7 @@ int CBP(char* requete, char* reponse, int socket)
             {
                 MYSQL_RES* resultat = NULL;
                 MYSQL_ROW ligne;
-                char temp[1024] = "";
+                char temp[BIG_BUF] = "";
                 
                 printf("Requête SQL: SELECT id, name FROM specialties ORDER BY name\n");
                 if (mysql_query(connexionBD, "SELECT id, name FROM specialties ORDER BY name"))
@@ -128,7 +128,7 @@ int CBP(char* requete, char* reponse, int socket)
                         int first = 1;
                         while ((ligne = mysql_fetch_row(resultat)))
                         {
-                            char ligneSpecialite[100];
+                            char ligneSpecialite[SMALL_BUF];
                             if (first) {
                                 sprintf(ligneSpecialite, "#%s#%s", ligne[0], ligne[1]);
                                 first = 0;
@@ -169,7 +169,7 @@ int CBP(char* requete, char* reponse, int socket)
             {
                 MYSQL_RES* resultat = NULL;
                 MYSQL_ROW ligne;
-                char temp[1024] = "";
+                char temp[BIG_BUF] = "";
                 
                 printf("Requête SQL: SELECT d.id, d.last_name, d.first_name, s.name FROM doctors d JOIN specialties s ON d.specialty_id = s.id ORDER BY d.last_name, d.first_name\n");
                 if (mysql_query(connexionBD, "SELECT d.id, d.last_name, d.first_name, s.name FROM doctors d JOIN specialties s ON d.specialty_id = s.id ORDER BY d.last_name, d.first_name"))
@@ -187,7 +187,7 @@ int CBP(char* requete, char* reponse, int socket)
                         int first = 1;
                         while ((ligne = mysql_fetch_row(resultat)))
                         {
-                            char ligneDocteur[200];
+                            char ligneDocteur[MED_BUF];
                             if (first) {
                                 sprintf(ligneDocteur, "#%s#%s %s#%s", ligne[0], ligne[1], ligne[2], ligne[3]);
                                 first = 0;
@@ -208,7 +208,7 @@ int CBP(char* requete, char* reponse, int socket)
     // ***** SEARCH_CONSULTATIONS ***************************
     if (strcmp(ptr, SEARCH_CONSULTATIONS) == 0)
     {
-        char specialty[50], doctor[50], startDate[20], endDate[20];
+        char specialty[MAX_NAME_LEN], doctor[MAX_NAME_LEN], startDate[20], endDate[20];
         strcpy(specialty, strtok(NULL, "#"));
         strcpy(doctor, strtok(NULL, "#"));
         strcpy(startDate, strtok(NULL, "#"));
@@ -237,8 +237,8 @@ int CBP(char* requete, char* reponse, int socket)
             {
                 MYSQL_RES* resultat = NULL;
                 MYSQL_ROW ligne;
-                char temp[2048] = "";
-                char requete[1024];
+                char temp[HUGE_BUF] = "";
+                char requete[BIG_BUF];
                 
                 // Construction de la requête SQL
                 if (strcmp(specialty, "--- TOUTES ---") == 0 && strcmp(doctor, "--- TOUS ---") == 0)
@@ -314,7 +314,7 @@ int CBP(char* requete, char* reponse, int socket)
                         int first = 1;
                         while ((ligne = mysql_fetch_row(resultat)))
                         {
-                            char ligneConsultation[200];
+                            char ligneConsultation[MED_BUF];
                             if (first) {
                                 sprintf(ligneConsultation, "#%s#%s#%s#%s#%s", 
                                        ligne[0], ligne[1], ligne[2], ligne[3], ligne[4]);
@@ -337,7 +337,7 @@ int CBP(char* requete, char* reponse, int socket)
     // ***** BOOK_CONSULTATION ******************************
     if (strcmp(ptr, BOOK_CONSULTATION) == 0)
     {
-        char consultationId[10], reason[100];
+        char consultationId[MAX_ID_LEN], reason[SMALL_BUF];
         strcpy(consultationId, strtok(NULL, "#"));
         strcpy(reason, strtok(NULL, "#"));
         
@@ -378,7 +378,7 @@ int CBP(char* requete, char* reponse, int socket)
                 }
                 else
                 {
-                    char requete[1024];
+                    char requete[BIG_BUF];
                     sprintf(requete, 
                         "UPDATE consultations SET patient_id = %d, reason = '%s' WHERE id = %s AND patient_id IS NULL",
                         patientId, reason, consultationId);
@@ -491,7 +491,7 @@ int connecterBD()
         return -1;
     }
     
-    if (!mysql_real_connect(connexionBD, "localhost", "Student", "PassStudent1_", "PourStudent", 0, NULL, 0))
+    if (!mysql_real_connect(connexionBD, DB_HOST, DB_USER, DB_PASS, DB_NAME, 0, NULL, 0))
     {
         printf("Erreur de connexion MySQL: %s\n", mysql_error(connexionBD));
         mysql_close(connexionBD);

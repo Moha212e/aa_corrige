@@ -23,7 +23,7 @@ MainWindowClientConsultationBooker::MainWindowClientConsultationBooker(QWidget *
     }
 
     // Configuration de la table des employes (Personnel Garage)
-    ui->tableWidgetConsultations->setColumnCount(5);
+    ui->tableWidgetConsultations->setColumnCount(COL_COUNT_CONSULTATIONS);
     ui->tableWidgetConsultations->setRowCount(0);
     QStringList labelsTableConsultations;
     labelsTableConsultations << "Id" << "Spécialité" << "Médecin" << "Date" << "Heure";
@@ -35,8 +35,8 @@ MainWindowClientConsultationBooker::MainWindowClientConsultationBooker(QWidget *
     ui->tableWidgetConsultations->horizontalHeader()->setStretchLastSection(true);
     ui->tableWidgetConsultations->verticalHeader()->setVisible(false);
     ui->tableWidgetConsultations->horizontalHeader()->setStyleSheet("background-color: lightyellow");
-    int columnWidths[] = {40, 150, 200, 150, 100};
-    for (int col = 0; col < 5; ++col)
+    int columnWidths[] = {COL_WIDTH_ID, COL_WIDTH_SPECIALTY, COL_WIDTH_DOCTOR, COL_WIDTH_DATE, COL_WIDTH_HOUR};
+    for (int col = 0; col < COL_COUNT_CONSULTATIONS; ++col)
         ui->tableWidgetConsultations->setColumnWidth(col, columnWidths[col]);
 
 }

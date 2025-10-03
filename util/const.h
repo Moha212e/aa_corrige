@@ -38,3 +38,36 @@
 // Code générique pour indiquer au serveur de fermer la connexion
 #define FERMER_CONNEXION 99
 // constantes pour les requêtes de base de données
+// Tailles et longueurs communes
+#define MAX_NAME_LEN 50
+#define MAX_ID_LEN 10
+#define FLAG_LEN 2
+
+#define SMALL_BUF 100
+#define MED_BUF 200
+#define BIG_BUF 1024
+#define HUGE_BUF 2048
+
+#define IP_STR_LEN 50
+
+// Paramètres de connexion BD
+#define DB_HOST "localhost"
+#define DB_USER "Student"
+#define DB_PASS "PassStudent1_"
+#define DB_NAME "PourStudent"
+
+// Réseau / Serveur par défaut
+#define DEFAULT_SERVER_IP "127.0.0.1"
+#define DEFAULT_SERVER_PORT 8080
+
+// UI Qt: tailles colonnes tableau consultations
+#define COL_COUNT_CONSULTATIONS 5
+#define COL_WIDTH_ID 40
+#define COL_WIDTH_SPECIALTY 150
+#define COL_WIDTH_DOCTOR 200
+#define COL_WIDTH_DATE 150
+#define COL_WIDTH_HOUR 100
+
+// Longueurs de dates/heure (format yyyy-MM-dd et HH:mm)
+#define DATE_STR_LEN 20
+#define HOUR_STR_LEN 16

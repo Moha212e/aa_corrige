@@ -253,8 +253,8 @@ private:
     // Variables de communication réseau
     int socketServeur;
     bool connecte;
-    string ipServeur = "127.0.0.1";
-    int portServeur = 8080;
+    string ipServeur = DEFAULT_SERVER_IP;
+    int portServeur = DEFAULT_SERVER_PORT;
 
 protected:
     void closeEvent(QCloseEvent* event) override;

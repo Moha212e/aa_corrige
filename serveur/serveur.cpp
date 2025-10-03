@@ -171,7 +171,7 @@ int main(int argc, char* argv[])
     
     // Mise en boucle du serveur
     int sService;
-    char ipClient[50];
+    char ipClient[IP_STR_LEN];
     printf("Demarrage du serveur.\n");
     while (1)
     {
@@ -281,7 +281,7 @@ void HandlerSIGINT(int s)
  */
 void TraitementConnexion(int sService)
 {
-        char requete[200], reponse[200];
+        char requete[MED_BUF], reponse[MED_BUF];
         int nbLus, nbEcrits;
         int status = SUCCES;
 
