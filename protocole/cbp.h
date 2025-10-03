@@ -24,23 +24,28 @@
 int CBP(char* requete, char* reponse, int socket);
 
 /**
- * Fonction d'authentification des utilisateurs
+ * Fonction d'authentification et gestion des patients
  * 
- * @param user: Nom d'utilisateur à vérifier
- * @param password: Mot de passe à vérifier
+ * @param nom: Nom de famille du patient
+ * @param prenom: Prénom du patient
+ * @param numeroPatient: Numéro de patient (si patient existant), -1 si nouveau
+ * @param nouveauPatient: 1 si nouveau patient, 0 si patient existant
+ * @param patientId: Pointeur pour retourner l'ID du patient (en sortie)
  * 
- * @return bool: 
- *   - true: Identifiants valides, connexion autorisée
- *   - false: Identifiants invalides, connexion refusée
+ * @return int: 
+ *   - SUCCES: Authentification réussie
+ *   - MAUVAIS_IDENTIFIANTS: Identifiants invalides
+ *   - PATIENT_NON_TROUVE: Patient existant non trouvé
+ *   - ERREUR_BD: Erreur base de données
+ *   - ERREUR_INCONNUE: Erreur générale
  * 
  * Cette fonction sert à:
- * - Vérifier les identifiants de connexion
- * - Autoriser l'accès aux patients authentifiés
- * - Maintenir la sécurité du système
- * 
- * Note: Version simplifiée avec utilisateurs hardcodés (wagner/abc123, charlet/xyz456)
+ * - Vérifier l'existence d'un patient existant (nom/prénom/ID)
+ * - Créer un nouveau patient en BD et retourner son ID
+ * - Valider les informations d'authentification
+ * - Gérer les cas d'erreur d'accès BD
  */
-int CBP_Login(const char* nom, const char* prenom);
+int CBP_Login(const char* nom, const char* prenom, int numeroPatient, int nouveauPatient, int* patientId);
 
 /**
  * Fonction de calcul mathématique (fonction utilitaire)
@@ -59,6 +64,24 @@ int CBP_Login(const char* nom, const char* prenom);
  * Note: Fonction utilitaire, pas directement liée au protocole de réservation
  */
 int CBP_Operation(char op, int a, int b);
+
+/**
+ * Récupère la liste des patients connectés (pour client admin Java)
+ * 
+ * @param buffer: Buffer de sortie pour stocker la liste formatée
+ * @param tailleBuff: Taille du buffer de sortie
+ * 
+ * @return int: Nombre de patients connectés
+ * 
+ * Cette fonction sert à:
+ * - Fournir la liste des patients connectés au client admin
+ * - Formater les informations (ID, nom, prénom, IP) 
+ * - Permettre le monitoring des connexions actives
+ * - Sécuriser l'accès aux informations des patients
+ * 
+ * Note: Format de sortie: "patientId#nom#prenom#ip|..."
+ */
+int CBP_GetPatientsConnectes(char* buffer, int tailleBuff);
 
 /**
  * Ferme proprement toutes les connexions et libère les ressources

@@ -10,11 +10,19 @@
 #include <cstring>
 
 //***** Etat du protocole : liste des clients loggés ****************
-int clients[NB_MAX_CLIENTS];
+typedef struct {
+    int socket;
+    int patientId;
+    char nom[MAX_NAME_LEN];
+    char prenom[MAX_NAME_LEN];
+    char ip[IP_STR_LEN];
+} CLIENT_INFO;
+
+CLIENT_INFO clients[NB_MAX_CLIENTS];
 int nbClients = 0;
 
 int estPresent(int socket);
-void ajoute(int socket);
+void ajoute(int socket, int patientId, const char* nom, const char* prenom);
 void retire(int socket);
 
 pthread_mutex_t mutexClients = PTHREAD_MUTEX_INITIALIZER;
@@ -25,456 +33,258 @@ pthread_mutex_t mutexBD = PTHREAD_MUTEX_INITIALIZER;
 
 int connecterBD();
 void deconnecterBD(); 
-//***** Parsing de la requete et creation de la reponse *************
-int CBP(char* requete, char* reponse, int socket)
+//***** Fonctions utilitaires ***************************************
+bool verifierAuthentification(int socket, const char* commande, char* reponse)
 {
-    // ***** Récupération nom de la requete *****************
+    if (estPresent(socket) == -1) {
+        sprintf(reponse, "%s#%s#Client non loggé !", commande, KO);
+        return false;
+    }
+    return true;
+}
+
+bool executerRequeteBD(const char* commande, const char* requeteSQL, char* reponse, char* temp)
+{
+    pthread_mutex_lock(&mutexBD);
+    if (connexionBD == NULL && connecterBD() != 0) {
+        pthread_mutex_unlock(&mutexBD);
+        sprintf(reponse, "%s#%s#Erreur connexion BD !", commande, KO);
+        return false;
+    }
+    
+    if (mysql_query(connexionBD, requeteSQL)) {
+        pthread_mutex_unlock(&mutexBD);
+        sprintf(reponse, "%s#%s#Erreur requête BD !", commande, KO);
+        return false;
+    }
+    
+    MYSQL_RES* resultat = mysql_store_result(connexionBD);
+    if (resultat) {
+        strcpy(temp, commande);
+        strcat(temp, "#" OK "#");
+        
+        MYSQL_ROW ligne;
+        int first = 1;
+        while ((ligne = mysql_fetch_row(resultat))) {
+            char buffer[MED_BUF];
+            int cols = mysql_num_fields(resultat);
+            
+            sprintf(buffer, "%s%s", first ? "#" : "|", ligne[0]);
+            for (int i = 1; i < cols; i++) {
+                strcat(buffer, "#");
+                strcat(buffer, ligne[i] ? ligne[i] : "");
+            }
+            strcat(temp, buffer);
+            first = 0;
+        }
+        mysql_free_result(resultat);
+    }
+    pthread_mutex_unlock(&mutexBD);
+    strcpy(reponse, temp);
+    return true;
+}
+
+//***** Parsing de la requete et creation de la reponse *************
+bool CBP(char* requete, char* reponse, int socket)
+{
     char *ptr = strtok(requete, "#");
     
     // ***** LOGIN ******************************************
-    if (strcmp(ptr, LOGIN) == 0)
-    {
-        char nom[MAX_NAME_LEN], prenom[MAX_NAME_LEN], patientId[MAX_ID_LEN], nouveauPatient[FLAG_LEN];
+    if (strcmp(ptr, LOGIN) == 0) {
+        char nom[MAX_NAME_LEN], prenom[MAX_NAME_LEN], numeroPatientStr[MAX_ID_LEN], nouveauPatientStr[FLAG_LEN];
+        int numeroPatient, nouveauPatient, patientId;
+        
         strcpy(nom, strtok(NULL, "#"));
         strcpy(prenom, strtok(NULL, "#"));
-        strcpy(patientId, strtok(NULL, "#"));
-        strcpy(nouveauPatient, strtok(NULL, "#"));
-        printf("\t[THREAD %lu] LOGIN de %s %s (ID: %s, Nouveau: %s)\n", (unsigned long)pthread_self(), nom, prenom, patientId, nouveauPatient);
+        strcpy(numeroPatientStr, strtok(NULL, "#"));
+        strcpy(nouveauPatientStr, strtok(NULL, "#"));
         
-        if (estPresent(socket) >= 0)  // client déjà loggé
-        {
+        numeroPatient = atoi(numeroPatientStr);
+        nouveauPatient = atoi(nouveauPatientStr);
+        
+        printf("\t[THREAD %lu] LOGIN de %s %s (nouveau: %s)\n", 
+               (unsigned long)pthread_self(), nom, prenom, nouveauPatient ? "OUI" : "NON");
+        
+        if (estPresent(socket) >= 0) {
             sprintf(reponse, LOGIN "#" KO "#Client déjà loggé !");
-            return SUCCES; // Ne pas fermer la connexion, juste refuser le login
+            return false;
         }
-        else
-        {
-            if(strcmp(nouveauPatient, "0") == 0){
-                // Patient existant - vérifier les identifiants (nom = user, prenom = password pour simplifier)
-                int loginResult = CBP_Login(nom, prenom);
-                switch(loginResult) {
-                    case SUCCES: // Succès
-                        sprintf(reponse, LOGIN "#" OK "#");
-                        ajoute(socket);
-                        return SUCCES;
-                    case MAUVAIS_IDENTIFIANTS: // Mauvais identifiants
-                        sprintf(reponse, LOGIN "#" KO "#Mauvais identifiants !");
-                        return SUCCES; // Ne pas fermer la connexion
-                    case PATIENT_NON_TROUVE: // Patient non trouvé
-                        sprintf(reponse, LOGIN "#" KO "#Patient non trouvé !");
-                        return SUCCES; // Ne pas fermer la connexion
-                    case ERREUR_BD: // Erreur BD
-                        sprintf(reponse, LOGIN "#" KO "#Erreur de connexion BD !");
-                        return SUCCES; // Ne pas fermer la connexion
-                    default:
-                        sprintf(reponse, LOGIN "#" KO "#Erreur inconnue !");
-                        return SUCCES; // Ne pas fermer la connexion
+        
+        int resultatLogin = CBP_Login(nom, prenom, numeroPatient, nouveauPatient, &patientId);
+        
+        switch(resultatLogin) {
+            case SUCCES:
+                if (nouveauPatient) {
+                    sprintf(reponse, LOGIN "#" OK "#%d", patientId);
+                } else {
+                    sprintf(reponse, LOGIN "#" OK "#%d", patientId);
                 }
-            }else {
-                // Nouveau patient - ajouter directement
-                ajoute(socket);
-                sprintf(reponse, LOGIN "#" OK "#");
-                return SUCCES;
-            }
+                ajoute(socket, patientId, nom, prenom);
+                break;
+                
+            case PATIENT_NON_TROUVE:
+                sprintf(reponse, LOGIN "#" KO "#Patient non trouvé !");
+                return false;
+                
+            case ERREUR_BD:
+                sprintf(reponse, LOGIN "#" KO "#Erreur base de données !");
+                return false;
+                
+            default:
+                sprintf(reponse, LOGIN "#" KO "#Erreur d'authentification !");
+                return false;
         }
     }
     
     // ***** LOGOUT *****************************************
-    if (strcmp(ptr, LOGOUT) == 0)
-    {
+    else if (strcmp(ptr, LOGOUT) == 0) {
         printf("\t[THREAD %lu] LOGOUT\n", (unsigned long)pthread_self());
         retire(socket);
         sprintf(reponse, LOGOUT "#" OK "#");
-        return FERMER_CONNEXION; // Fermer la connexion après LOGOUT
+        return false;
     }
     
     // ***** GET_SPECIALTIES ********************************
-    if (strcmp(ptr, GET_SPECIALTIES) == 0)
-    {
+    else if (strcmp(ptr, GET_SPECIALTIES) == 0) {
         printf("\t[THREAD %lu] GET_SPECIALTIES\n", (unsigned long)pthread_self());
+        if (!verifierAuthentification(socket, GET_SPECIALTIES, reponse)) return true;
         
-        if (estPresent(socket) == -1)
-        {
-            sprintf(reponse, GET_SPECIALTIES "#" KO "#Client non loggé !");
-        }
-        else
-        {
-            // Récupérer les spécialités depuis la BD
-            pthread_mutex_lock(&mutexBD);
-            if (connexionBD == NULL && connecterBD() != 0)
-            {
-                printf("Erreur de connexion à la base de données pour GET_SPECIALTIES\n");
-                pthread_mutex_unlock(&mutexBD);
-                sprintf(reponse, GET_SPECIALTIES "#" KO "#Erreur connexion BD !");
-            }
-            else
-            {
-                MYSQL_RES* resultat = NULL;
-                MYSQL_ROW ligne;
-                char temp[BIG_BUF] = "";
-                
-                printf("Requête SQL: SELECT id, name FROM specialties ORDER BY name\n");
-                if (mysql_query(connexionBD, "SELECT id, name FROM specialties ORDER BY name"))
-                {
-                    printf("Erreur MySQL: %s\n", mysql_error(connexionBD));
-                    pthread_mutex_unlock(&mutexBD);
-                    sprintf(reponse, GET_SPECIALTIES "#" KO "#Erreur requête BD: %s", mysql_error(connexionBD));
-                }
-                else
-                {
-                    resultat = mysql_store_result(connexionBD);
-                    if (resultat)
-                    {
-                        strcpy(temp, GET_SPECIALTIES "#" OK "#");
-                        int first = 1;
-                        while ((ligne = mysql_fetch_row(resultat)))
-                        {
-                            char ligneSpecialite[SMALL_BUF];
-                            if (first) {
-                                sprintf(ligneSpecialite, "#%s#%s", ligne[0], ligne[1]);
-                                first = 0;
-                            } else {
-                                sprintf(ligneSpecialite, "|%s#%s", ligne[0], ligne[1]);
-                            }
-                            strcat(temp, ligneSpecialite);
-                        }
-                        mysql_free_result(resultat);
-                    }
-                    pthread_mutex_unlock(&mutexBD);
-                    strcpy(reponse, temp);
-                }
-            }
-        }
+        char temp[BIG_BUF];
+        executerRequeteBD(GET_SPECIALTIES, "SELECT id, name FROM specialties ORDER BY name", reponse, temp);
     }
     
     // ***** GET_DOCTORS ************************************
-    if (strcmp(ptr, GET_DOCTORS) == 0)
-    {
+    else if (strcmp(ptr, GET_DOCTORS) == 0) {
         printf("\t[THREAD %lu] GET_DOCTORS\n", (unsigned long)pthread_self());
+        if (!verifierAuthentification(socket, GET_DOCTORS, reponse)) return true;
         
-        if (estPresent(socket) == -1)
-        {
-            sprintf(reponse, GET_DOCTORS "#" KO "#Client non loggé !");
-        }
-        else
-        {
-            // Récupérer les médecins depuis la BD
-            pthread_mutex_lock(&mutexBD);
-            if (connexionBD == NULL && connecterBD() != 0)
-            {
-                printf("Erreur de connexion à la base de données pour GET_DOCTORS\n");
-                pthread_mutex_unlock(&mutexBD);
-                sprintf(reponse, GET_DOCTORS "#" KO "#Erreur connexion BD !");
-            }
-            else
-            {
-                MYSQL_RES* resultat = NULL;
-                MYSQL_ROW ligne;
-                char temp[BIG_BUF] = "";
-                
-                printf("Requête SQL: SELECT d.id, d.last_name, d.first_name, s.name FROM doctors d JOIN specialties s ON d.specialty_id = s.id ORDER BY d.last_name, d.first_name\n");
-                if (mysql_query(connexionBD, "SELECT d.id, d.last_name, d.first_name, s.name FROM doctors d JOIN specialties s ON d.specialty_id = s.id ORDER BY d.last_name, d.first_name"))
-                {
-                    printf("Erreur MySQL: %s\n", mysql_error(connexionBD));
-                    pthread_mutex_unlock(&mutexBD);
-                    sprintf(reponse, GET_DOCTORS "#" KO "#Erreur requête BD: %s", mysql_error(connexionBD));
-                }
-                else
-                {
-                    resultat = mysql_store_result(connexionBD);
-                    if (resultat)
-                    {
-                        strcpy(temp, GET_DOCTORS "#" OK "#");
-                        int first = 1;
-                        while ((ligne = mysql_fetch_row(resultat)))
-                        {
-                            char ligneDocteur[MED_BUF];
-                            if (first) {
-                                sprintf(ligneDocteur, "#%s#%s %s#%s", ligne[0], ligne[1], ligne[2], ligne[3]);
-                                first = 0;
-                            } else {
-                                sprintf(ligneDocteur, "|%s#%s %s#%s", ligne[0], ligne[1], ligne[2], ligne[3]);
-                            }
-                            strcat(temp, ligneDocteur);
-                        }
-                        mysql_free_result(resultat);
-                    }
-                    pthread_mutex_unlock(&mutexBD);
-                    strcpy(reponse, temp);
-                }
-            }
-        }
+        char temp[BIG_BUF];
+        executerRequeteBD(GET_DOCTORS, 
+            "SELECT d.id, CONCAT(d.last_name, ' ', d.first_name), s.name FROM doctors d "
+            "JOIN specialties s ON d.specialty_id = s.id ORDER BY d.last_name, d.first_name", 
+            reponse, temp);
     }
     
     // ***** SEARCH_CONSULTATIONS ***************************
-    if (strcmp(ptr, SEARCH_CONSULTATIONS) == 0)
-    {
+    else if (strcmp(ptr, SEARCH_CONSULTATIONS) == 0) {
         char specialty[MAX_NAME_LEN], doctor[MAX_NAME_LEN], startDate[20], endDate[20];
         strcpy(specialty, strtok(NULL, "#"));
         strcpy(doctor, strtok(NULL, "#"));
         strcpy(startDate, strtok(NULL, "#"));
         strcpy(endDate, strtok(NULL, "#"));
         
-        printf("\t[THREAD %lu] SEARCH_CONSULTATIONS: '%s', '%s', '%s', '%s'\n", 
-               (unsigned long)pthread_self(), specialty, doctor, startDate, endDate);
-        printf("\t[DEBUG] Longueurs: specialty=%lu, doctor=%lu, startDate=%lu, endDate=%lu\n",
-               strlen(specialty), strlen(doctor), strlen(startDate), strlen(endDate));
+        printf("\t[THREAD %lu] SEARCH_CONSULTATIONS\n", (unsigned long)pthread_self());
+        if (!verifierAuthentification(socket, SEARCH_CONSULTATIONS, reponse)) return true;
         
-        if (estPresent(socket) == -1)
-        {
-            sprintf(reponse, SEARCH_CONSULTATIONS "#" KO "#Client non loggé !");
-        }
-        else
-        {
-            // Rechercher les consultations disponibles
-            pthread_mutex_lock(&mutexBD);
-            if (connexionBD == NULL && connecterBD() != 0)
-            {
-                printf("Erreur de connexion à la base de données\n");
-                pthread_mutex_unlock(&mutexBD);
-                sprintf(reponse, SEARCH_CONSULTATIONS "#" KO "#Erreur connexion BD !");
-            }
-            else
-            {
-                MYSQL_RES* resultat = NULL;
-                MYSQL_ROW ligne;
-                char temp[HUGE_BUF] = "";
-                char requete[BIG_BUF];
-                
-                // Construction de la requête SQL
-                if (strcmp(specialty, "--- TOUTES ---") == 0 && strcmp(doctor, "--- TOUS ---") == 0)
-                {
-                    // Cas où on cherche toutes les spécialités et tous les docteurs
-                    sprintf(requete, 
-                        "SELECT c.id, CONCAT(d.last_name, ' ', d.first_name) as docteur, s.name as specialite, c.date, c.hour "
-                        "FROM consultations c "
-                        "JOIN doctors d ON c.doctor_id = d.id "
-                        "JOIN specialties s ON d.specialty_id = s.id "
-                        "WHERE c.patient_id IS NULL "
-                        "AND c.date >= '%s' AND c.date <= '%s' "
-                        "ORDER BY c.date, c.hour",
-                        startDate, endDate);
-                }
-                else if (strcmp(specialty, "--- TOUTES ---") == 0)
-                {
-                    // Cas où on cherche toutes les spécialités mais un docteur spécifique
-                    sprintf(requete, 
-                        "SELECT c.id, CONCAT(d.last_name, ' ', d.first_name) as docteur, s.name as specialite, c.date, c.hour "
-                        "FROM consultations c "
-                        "JOIN doctors d ON c.doctor_id = d.id "
-                        "JOIN specialties s ON d.specialty_id = s.id "
-                        "WHERE c.patient_id IS NULL "
-                        "AND CONCAT(d.last_name, ' ', d.first_name) = '%s' "
-                        "AND c.date >= '%s' AND c.date <= '%s' "
-                        "ORDER BY c.date, c.hour",
-                        doctor, startDate, endDate);
-                }
-                else if (strcmp(doctor, "--- TOUS ---") == 0)
-                {
-                    // Cas où on cherche une spécialité spécifique mais tous les docteurs
-                    sprintf(requete, 
-                        "SELECT c.id, CONCAT(d.last_name, ' ', d.first_name) as docteur, s.name as specialite, c.date, c.hour "
-                        "FROM consultations c "
-                        "JOIN doctors d ON c.doctor_id = d.id "
-                        "JOIN specialties s ON d.specialty_id = s.id "
-                        "WHERE c.patient_id IS NULL "
-                        "AND s.name = '%s' "
-                        "AND c.date >= '%s' AND c.date <= '%s' "
-                        "ORDER BY c.date, c.hour",
-                        specialty, startDate, endDate);
-                }
-                else
-                {
-                    // Cas où on cherche une spécialité et un docteur spécifiques
-                    sprintf(requete, 
-                        "SELECT c.id, CONCAT(d.last_name, ' ', d.first_name) as docteur, s.name as specialite, c.date, c.hour "
-                        "FROM consultations c "
-                        "JOIN doctors d ON c.doctor_id = d.id "
-                        "JOIN specialties s ON d.specialty_id = s.id "
-                        "WHERE c.patient_id IS NULL "
-                        "AND s.name = '%s' "
-                        "AND CONCAT(d.last_name, ' ', d.first_name) = '%s' "
-                        "AND c.date >= '%s' AND c.date <= '%s' "
-                        "ORDER BY c.date, c.hour",
-                        specialty, doctor, startDate, endDate);
-                }
-                
-                printf("Requête SQL: %s\n", requete);
-                if (mysql_query(connexionBD, requete))
-                {
-                    printf("Erreur MySQL: %s\n", mysql_error(connexionBD));
-                    pthread_mutex_unlock(&mutexBD);
-                    sprintf(reponse, SEARCH_CONSULTATIONS "#" KO "#Erreur requête BD: %s", mysql_error(connexionBD));
-                }
-                else
-                {
-                    resultat = mysql_store_result(connexionBD);
-                    if (resultat)
-                    {
-                        strcpy(temp, SEARCH_CONSULTATIONS "#" OK "#");
-                        int first = 1;
-                        while ((ligne = mysql_fetch_row(resultat)))
-                        {
-                            char ligneConsultation[MED_BUF];
-                            if (first) {
-                                sprintf(ligneConsultation, "#%s#%s#%s#%s#%s", 
-                                       ligne[0], ligne[1], ligne[2], ligne[3], ligne[4]);
-                                first = 0;
-                            } else {
-                                sprintf(ligneConsultation, "|%s#%s#%s#%s#%s", 
-                                       ligne[0], ligne[1], ligne[2], ligne[3], ligne[4]);
-                            }
-                            strcat(temp, ligneConsultation);
-                        }
-                        mysql_free_result(resultat);
-                    }
-                    pthread_mutex_unlock(&mutexBD);
-                    strcpy(reponse, temp);
-                }
-            }
-        }
+        char requeteSQL[BIG_BUF], temp[HUGE_BUF];
+        sprintf(requeteSQL, 
+            "SELECT c.id, CONCAT(d.last_name, ' ', d.first_name), s.name, c.date, c.hour "
+            "FROM consultations c JOIN doctors d ON c.doctor_id = d.id "
+            "JOIN specialties s ON d.specialty_id = s.id WHERE c.patient_id IS NULL "
+            "AND ('%s' = '" TOUTES "' OR s.name = '%s') "
+            "AND ('%s' = '" TOUS "' OR CONCAT(d.last_name, ' ', d.first_name) = '%s') "
+            "AND c.date >= '%s' AND c.date <= '%s' ORDER BY c.date, c.hour",
+            specialty, specialty, doctor, doctor, startDate, endDate);
+        
+        executerRequeteBD(SEARCH_CONSULTATIONS, requeteSQL, reponse, temp);
     }
     
     // ***** BOOK_CONSULTATION ******************************
-    if (strcmp(ptr, BOOK_CONSULTATION) == 0)
-    {
+    else if (strcmp(ptr, BOOK_CONSULTATION) == 0) {
         char consultationId[MAX_ID_LEN], reason[SMALL_BUF];
         strcpy(consultationId, strtok(NULL, "#"));
         strcpy(reason, strtok(NULL, "#"));
         
-        printf("\t[THREAD %lu] BOOK_CONSULTATION: %s, %s\n",
-               (unsigned long)pthread_self(), consultationId, reason);
+        printf("\t[THREAD %lu] BOOK_CONSULTATION\n", (unsigned long)pthread_self());
+        if (!verifierAuthentification(socket, BOOK_CONSULTATION, reponse)) return true;
         
-        if (estPresent(socket) == -1)
-        {
-            sprintf(reponse, BOOK_CONSULTATION "#" KO "#Client non loggé !");
+        // Récupérer l'ID du patient connecté
+        int indexClient = estPresent(socket);
+        if (indexClient == -1) {
+            sprintf(reponse, BOOK_CONSULTATION "#" KO "#Patient non trouvé !");
+            return true;
         }
-        else
-        {
-            // Récupérer l'ID du patient connecté
-            int patientId = -1;
-            pthread_mutex_lock(&mutexClients);
-            for (int i = 0; i < nbClients; i++)
-            {
-                if (clients[i] == socket)
-                {
-                    patientId = i + 1; // ID patient basé sur l'index
-                    break;
-                }
-            }
-            pthread_mutex_unlock(&mutexClients);
+        
+        int patientId = clients[indexClient].patientId;
+        
+        pthread_mutex_lock(&mutexBD);
+        if (connexionBD == NULL && connecterBD() != 0) {
+            pthread_mutex_unlock(&mutexBD);
+            sprintf(reponse, BOOK_CONSULTATION "#" KO "#Erreur connexion BD !");
+        } else {
+            char requeteSQL[BIG_BUF];
+            sprintf(requeteSQL, 
+                "UPDATE consultations SET patient_id = %d, reason = '%s' WHERE id = %s AND patient_id IS NULL",
+                patientId, reason, consultationId);
             
-            if (patientId == -1)
-            {
-                sprintf(reponse, BOOK_CONSULTATION "#" KO "#Patient non trouvé !");
+            if (mysql_query(connexionBD, requeteSQL)) {
+                sprintf(reponse, BOOK_CONSULTATION "#" KO "#Erreur requête BD !");
+            } else {
+                sprintf(reponse, BOOK_CONSULTATION "#%s#%s", 
+                    mysql_affected_rows(connexionBD) > 0 ? OK : KO,
+                    mysql_affected_rows(connexionBD) > 0 ? "Consultation réservée !" : "Consultation non disponible !");
             }
-            else
-            {
-                // Réserver la consultation
-                pthread_mutex_lock(&mutexBD);
-                if (connexionBD == NULL && connecterBD() != 0)
-                {
-                    pthread_mutex_unlock(&mutexBD);
-                    sprintf(reponse, BOOK_CONSULTATION "#" KO "#Erreur connexion BD !");
-                }
-                else
-                {
-                    char requete[BIG_BUF];
-                    sprintf(requete, 
-                        "UPDATE consultations SET patient_id = %d, reason = '%s' WHERE id = %s AND patient_id IS NULL",
-                        patientId, reason, consultationId);
-                    
-                    printf("Requête SQL: %s\n", requete);
-                    if (mysql_query(connexionBD, requete))
-                    {
-                        printf("Erreur MySQL: %s\n", mysql_error(connexionBD));
-                        pthread_mutex_unlock(&mutexBD);
-                        sprintf(reponse, BOOK_CONSULTATION "#" KO "#Erreur requête BD: %s", mysql_error(connexionBD));
-                    }
-                    else
-                    {
-                        if (mysql_affected_rows(connexionBD) > 0)
-                        {
-                            pthread_mutex_unlock(&mutexBD);
-                            sprintf(reponse, BOOK_CONSULTATION "#" OK "#Consultation réservée avec succès !");
-                        }
-                        else
-                        {
-                            pthread_mutex_unlock(&mutexBD);
-                            sprintf(reponse, BOOK_CONSULTATION "#" KO "#Consultation non disponible !");
-                        }
-                    }
-                }
-            }
+            pthread_mutex_unlock(&mutexBD);
         }
     }
     
-    return SUCCES;
+    return true;
 } 
 //***** Traitement des requetes *************************************
-int CBP_Login(const char* nom, const char* prenom)
+int CBP_Login(const char* nom, const char* prenom, int numeroPatient, int nouveauPatient, int* patientId)
 {
-    // Vérifie dans la BD si (nom, prenom) correspond à un patient existant
-    // Règle:
-    // - 0 ligne avec ce nom  -> PATIENT_NON_TROUVE
-    // - >=1 ligne avec ce nom mais aucune avec ce prenom -> MAUVAIS_IDENTIFIANTS
-    // - >=1 ligne avec ce nom et ce prenom -> SUCCES
-
-    if (nom == NULL || prenom == NULL)
-        return ERREUR_INCONNUE;
-
-    int retour = ERREUR_INCONNUE;
-
     pthread_mutex_lock(&mutexBD);
-    if (connexionBD == NULL && connecterBD() != 0)
-    {
+    
+    if (connexionBD == NULL && connecterBD() != 0) {
         pthread_mutex_unlock(&mutexBD);
         return ERREUR_BD;
     }
-
-    // Échapper les paramètres pour la requête SQL
-    char nomEsc[2 * MAX_NAME_LEN + 1];
-    char prenomEsc[2 * MAX_NAME_LEN + 1];
-    mysql_real_escape_string(connexionBD, nomEsc, nom, strlen(nom));
-    mysql_real_escape_string(connexionBD, prenomEsc, prenom, strlen(prenom));
-
+    
+    char requeteSQL[BIG_BUF];
     MYSQL_RES* resultat = NULL;
-
-    // 1) Vérifier présence du nom de famille
-    char reqNom[BIG_BUF];
-    sprintf(reqNom, "SELECT id FROM patients WHERE last_name = '%s' LIMIT 1", nomEsc);
-    if (mysql_query(connexionBD, reqNom))
-    {
-        printf("Erreur MySQL (CBP_Login nom): %s\n", mysql_error(connexionBD));
+    MYSQL_ROW ligne;
+    
+    if (nouveauPatient) {
+        // ***** NOUVEAU PATIENT - Créer en BD *****
+        sprintf(requeteSQL, 
+            "INSERT INTO patients (last_name, first_name, birth_date) VALUES ('%s', '%s', '1900-01-01')", 
+            nom, prenom);
+        
+        if (mysql_query(connexionBD, requeteSQL)) {
+            pthread_mutex_unlock(&mutexBD);
+            return ERREUR_BD;
+        }
+        
+        // Récupérer l'ID généré
+        *patientId = (int)mysql_insert_id(connexionBD);
         pthread_mutex_unlock(&mutexBD);
-        return ERREUR_BD;
+        return SUCCES;
     }
-    resultat = mysql_store_result(connexionBD);
-    my_ulonglong nbNom = resultat ? mysql_num_rows(resultat) : 0;
-    if (resultat) mysql_free_result(resultat);
-
-    if (nbNom == 0)
-    {
+    else {
+        // ***** PATIENT EXISTANT - Vérifier en BD *****
+        sprintf(requeteSQL, 
+            "SELECT id FROM patients WHERE last_name = '%s' AND first_name = '%s' AND id = %d", 
+            nom, prenom, numeroPatient);
+        
+        if (mysql_query(connexionBD, requeteSQL)) {
+            pthread_mutex_unlock(&mutexBD);
+            return ERREUR_BD;
+        }
+        
+        resultat = mysql_store_result(connexionBD);
+        if (resultat) {
+            if ((ligne = mysql_fetch_row(resultat))) {
+                *patientId = atoi(ligne[0]);
+                mysql_free_result(resultat);
+                pthread_mutex_unlock(&mutexBD);
+                return SUCCES;
+            }
+            mysql_free_result(resultat);
+        }
+        
         pthread_mutex_unlock(&mutexBD);
         return PATIENT_NON_TROUVE;
     }
-
-    // 2) Vérifier combinaison nom+prenom
-    char reqCombi[BIG_BUF];
-    sprintf(reqCombi, "SELECT id FROM patients WHERE last_name = '%s' AND first_name = '%s' LIMIT 1", nomEsc, prenomEsc);
-    if (mysql_query(connexionBD, reqCombi))
-    {
-        printf("Erreur MySQL (CBP_Login nom+prenom): %s\n", mysql_error(connexionBD));
-        pthread_mutex_unlock(&mutexBD);
-        return ERREUR_BD;
-    }
-    resultat = mysql_store_result(connexionBD);
-    my_ulonglong nbCombi = resultat ? mysql_num_rows(resultat) : 0;
-    if (resultat) mysql_free_result(resultat);
-
-    retour = (nbCombi > 0) ? SUCCES : MAUVAIS_IDENTIFIANTS;
-
-    pthread_mutex_unlock(&mutexBD);
-    return retour;
 }
 
 int CBP_Operation(char op, int a, int b)
@@ -484,10 +294,10 @@ int CBP_Operation(char op, int a, int b)
     if (op == '*') return a * b;
     if (op == '/')
     {
-        if (b == 0) throw ERREUR_INCONNUE;
+        if (b == 0) throw 1;
         return a / b;
     }
-    return ERREUR_INCONNUE;
+    return 0;
 }
 
 //***** Gestion de l'état du protocole ******************************
@@ -496,15 +306,19 @@ int estPresent(int socket)
     int indice = -1;
     pthread_mutex_lock(&mutexClients);
     for (int i = 0; i < nbClients; i++)
-        if (clients[i] == socket) { indice = i; break; }
+        if (clients[i].socket == socket) { indice = i; break; }
     pthread_mutex_unlock(&mutexClients);
     return indice;
 }
 
-void ajoute(int socket)
+void ajoute(int socket, int patientId, const char* nom, const char* prenom)
 {
     pthread_mutex_lock(&mutexClients);
-    clients[nbClients] = socket;
+    clients[nbClients].socket = socket;
+    clients[nbClients].patientId = patientId;
+    strcpy(clients[nbClients].nom, nom);
+    strcpy(clients[nbClients].prenom, prenom);
+    strcpy(clients[nbClients].ip, "127.0.0.1"); // TODO: récupérer vraie IP
     nbClients++;
     pthread_mutex_unlock(&mutexClients);
 }
@@ -525,7 +339,7 @@ void CBP_Close()
 {
     pthread_mutex_lock(&mutexClients);
     for (int i = 0; i < nbClients; i++)
-        close(clients[i]);
+        close(clients[i].socket);
     pthread_mutex_unlock(&mutexClients);
     
     deconnecterBD();
@@ -544,7 +358,7 @@ int connecterBD()
         return -1;
     }
     
-    if (!mysql_real_connect(connexionBD, DB_HOST, DB_USER, DB_PASS, DB_NAME, 0, NULL, 0))
+    if (!mysql_real_connect(connexionBD, "localhost", "Student", "PassStudent1_", "PourStudent", 0, NULL, 0))
     {
         printf("Erreur de connexion MySQL: %s\n", mysql_error(connexionBD));
         mysql_close(connexionBD);
@@ -564,4 +378,29 @@ void deconnecterBD()
         connexionBD = NULL;
         printf("Connexion à la base de données fermée\n");
     }
+}
+
+//***** Fonction pour client admin Java *****************************
+int CBP_GetPatientsConnectes(char* buffer, int tailleBuff)
+{
+    pthread_mutex_lock(&mutexClients);
+    
+    strcpy(buffer, "");
+    for (int i = 0; i < nbClients; i++) {
+        char lignePatient[MED_BUF];
+        sprintf(lignePatient, "%s%d#%s#%s#%s", 
+                (i == 0) ? "" : "|",
+                clients[i].patientId,
+                clients[i].nom,
+                clients[i].prenom,
+                clients[i].ip);
+        
+        if (strlen(buffer) + strlen(lignePatient) < tailleBuff - 1) {
+            strcat(buffer, lignePatient);
+        }
+    }
+    
+    int nb = nbClients;
+    pthread_mutex_unlock(&mutexClients);
+    return nb;
 } 
