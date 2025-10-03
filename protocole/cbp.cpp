@@ -66,10 +66,20 @@ bool executerRequeteBD(const char* commande, const char* requeteSQL, char* repon
             char buffer[MED_BUF];
             int cols = mysql_num_fields(resultat);
             
-            sprintf(buffer, "%s%s", first ? "#" : "|", ligne[0]);
+            char prefix[5];
+            if (first) {
+                strcpy(prefix, "#");
+            } else {
+                strcpy(prefix, "|");
+            }
+            sprintf(buffer, "%s%s", prefix, ligne[0]);
             for (int i = 1; i < cols; i++) {
                 strcat(buffer, "#");
-                strcat(buffer, ligne[i] ? ligne[i] : "");
+                if (ligne[i]) {
+                    strcat(buffer, ligne[i]);
+                } else {
+                    strcat(buffer, "");
+                }
             }
             strcat(temp, buffer);
             first = 0;
@@ -97,8 +107,14 @@ bool CBP(char* requete, char* reponse, int socket)
         numeroPatient = atoi(numeroPatientStr);
         nouveauPatient = atoi(nouveauPatientStr);
         
+        const char* nouveauText;
+        if (nouveauPatient) {
+            nouveauText = "OUI";
+        } else {
+            nouveauText = "NON";
+        }
         printf("\t[THREAD %lu] LOGIN de %s %s (nouveau: %s)\n", 
-               (unsigned long)pthread_self(), nom, prenom, nouveauPatient ? "OUI" : "NON");
+               (unsigned long)pthread_self(), nom, prenom, nouveauText);
         
         if (estPresent(socket) >= 0) {
             sprintf(reponse, LOGIN "#" KO "#Client déjà loggé !");
@@ -210,9 +226,16 @@ bool CBP(char* requete, char* reponse, int socket)
             if (mysql_query(connexionBD, requeteSQL)) {
                 sprintf(reponse, BOOK_CONSULTATION "#" KO "#Erreur requête BD !");
             } else {
-                sprintf(reponse, BOOK_CONSULTATION "#%s#%s", 
-                    mysql_affected_rows(connexionBD) > 0 ? OK : KO,
-                    mysql_affected_rows(connexionBD) > 0 ? "Consultation réservée !" : "Consultation non disponible !");
+                const char* status;
+                const char* message;
+                if (mysql_affected_rows(connexionBD) > 0) {
+                    status = OK;
+                    message = "Consultation réservée !";
+                } else {
+                    status = KO;
+                    message = "Consultation non disponible !";
+                }
+                sprintf(reponse, BOOK_CONSULTATION "#%s#%s", status, message);
             }
             pthread_mutex_unlock(&mutexBD);
         }
@@ -370,8 +393,14 @@ int CBP_GetPatientsConnectes(char* buffer, int tailleBuff)
     strcpy(buffer, "");
     for (int i = 0; i < nbClients; i++) {
         char lignePatient[MED_BUF];
+        const char* separator;
+        if (i == 0) {
+            separator = "";
+        } else {
+            separator = "|";
+        }
         sprintf(lignePatient, "%s%d#%s#%s#%s", 
-                (i == 0) ? "" : "|",
+                separator,
                 clients[i].patientId,
                 clients[i].nom,
                 clients[i].prenom,
