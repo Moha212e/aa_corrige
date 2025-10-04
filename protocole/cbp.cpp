@@ -159,7 +159,7 @@ bool CBP(char* requete, char* reponse, int socket)
         if (!verifierAuthentification(socket, GET_SPECIALTIES, reponse)) return true;
         
         char temp[BIG_BUF];
-        executerRequeteBD(GET_SPECIALTIES, "SELECT id, name FROM specialties ORDER BY name", reponse, temp);
+        executerRequeteBD(GET_SPECIALTIES, "SELECT name FROM specialties ORDER BY name", reponse, temp);
     }
     
     else if (strcmp(ptr, GET_DOCTORS) == 0) {

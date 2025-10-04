@@ -5,6 +5,7 @@
 #include <QMessageBox>
 #include <iostream>
 #include <vector>
+#include <sstream>
 using namespace std;
 
 MainWindowClientConsultationBooker::MainWindowClientConsultationBooker(QWidget *parent)
@@ -327,22 +328,20 @@ bool MainWindowClientConsultationBooker::chargerSpecialties()
         clearComboBoxSpecialties();
         addComboBoxSpecialties(TOUTES);
         
-        string data = reponse.substr(strlen(GET_SPECIALTIES) + 4); // Enlever "GET_SPECIALTIES#ok"
-        size_t pos = 0;
-        while ((pos = data.find(diez)) != string::npos)
-        {
-            data = data.substr(pos + 1); // Enlever le #
-            size_t nextPos = data.find(diez);
-            if (nextPos != string::npos)
-            {
-                string specialite = data.substr(nextPos + 1);
-                size_t endPos = specialite.find(diez);
-                if (endPos != string::npos)
-                {
-                    specialite = specialite.substr(0, endPos);
-                }
+        // Format attendu: GET_SPECIALTIES#ok##nom1|nom2|nom3...
+        string data = reponse.substr(strlen(GET_SPECIALTIES) + 4); // Enlever "GET_SPECIALTIES#ok#"
+        
+        // Enlever le premier # s'il existe
+        if (!data.empty() && data[0] == '#') {
+            data = data.substr(1);
+        }
+        
+        // Parser les spécialités séparées par |
+        stringstream ss(data);
+        string specialite;
+        while (getline(ss, specialite, '|')) {
+            if (!specialite.empty()) {
                 addComboBoxSpecialties(specialite);
-                data = data.substr(nextPos + 1);
             }
         }
         return true;
