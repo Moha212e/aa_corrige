@@ -577,3 +577,5 @@ void MainWindowClientConsultationBooker::on_pushButtonReserver_clicked()
         dialogError("Erreur", "Échec de la réservation");
     }
 }
+
+

@@ -28,7 +28,7 @@ pthread_mutex_t mutexSocketsAcceptees;
 pthread_cond_t condSocketsAcceptees; 
 int main(int argc, char* argv[])
 {
-    const char* fichierConfig = (argc == 2) ? argv[1] : "serveur.conf";
+    const char* fichierConfig = "serveur.conf";
     
     printf("Chargement du fichier de configuration : %s\n", fichierConfig);
     if (chargerConfiguration(fichierConfig) != 0)
@@ -80,7 +80,7 @@ int main(int argc, char* argv[])
         pthread_create(&th, NULL, FctThreadClient, NULL);
     
     int sService;
-    char ipClient[IP_STR_LEN];
+    char ipClient[IP_STR_LEN] = DEFAULT_SERVER_IP;
     printf("Demarrage du serveur.\n");
     while (1)
     {
