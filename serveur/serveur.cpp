@@ -41,7 +41,7 @@ int main(int argc, char* argv[])
     printf("Configuration chargée depuis le fichier :\n");
     printf("  Port: %d\n", PORT_RESERVATION);
     printf("  Threads: %d\n", NB_THREADS_POOL);
-    printf("  File d'attente: %d\n", TAILLE_FILE_ATTENTE);
+    printf("  File d'attente: %d\n", 5);
     
     socketsAcceptees = (int*)malloc(TAILLE_FILE_ATTENTE * sizeof(int));
     if (socketsAcceptees == NULL)

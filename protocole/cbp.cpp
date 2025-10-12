@@ -32,6 +32,16 @@ pthread_mutex_t mutexBD = PTHREAD_MUTEX_INITIALIZER;
 
 int connecterBD();
 void deconnecterBD();
+
+// Fonctions helper pour simplifier le code
+void formatErrorResponse(char* reponse, const char* commande, const char* message);
+void formatSuccessResponse(char* reponse, const char* commande, const char* data);
+bool handleLogin(char* params, char* reponse, int socket);
+bool handleLogout(char* reponse, int socket);
+bool handleGetSpecialties(char* reponse, int socket);
+bool handleGetDoctors(char* reponse, int socket);
+bool handleSearchConsultations(char* params, char* reponse, int socket);
+bool handleBookConsultation(char* params, char* reponse, int socket);
 bool verifierAuthentification(int socket, const char *commande, char *reponse)
 {
     if (estPresent(socket) == -1)
@@ -48,14 +58,14 @@ bool executerRequeteBD(const char *commande, const char *requeteSQL, char *repon
     if (connexionBD == NULL && connecterBD() != 0)
     {
         pthread_mutex_unlock(&mutexBD);
-        sprintf(reponse, "%s#%s#Erreur connexion BD !", commande, KO);
+        formatErrorResponse(reponse, commande, "Erreur connexion BD !");
         return false;
     }
 
     if (mysql_query(connexionBD, requeteSQL))
     {
         pthread_mutex_unlock(&mutexBD);
-        sprintf(reponse, "%s#%s#Erreur requête BD !", commande, KO);
+        formatErrorResponse(reponse, commande, "Erreur requête BD !");
         return false;
     }
 
@@ -66,36 +76,30 @@ bool executerRequeteBD(const char *commande, const char *requeteSQL, char *repon
         strcat(temp, "#" OK "#");
 
         MYSQL_ROW ligne;
-        int first = 1;
+        bool first = true;
         while ((ligne = mysql_fetch_row(resultat)))
         {
-            char buffer[MED_BUF];
             int cols = mysql_num_fields(resultat);
 
-            char prefix[5];
-            if (first)
-            {
-                strcpy(prefix, "#");
+            // Ajouter le séparateur
+            if (first) {
+                strcat(temp, "#");
+                first = false;
+            } else {
+                strcat(temp, "|");
             }
-            else
-            {
-                strcpy(prefix, "|");
-            }
-            sprintf(buffer, "%s%s", prefix, ligne[0]);
+            
+            // Ajouter la première colonne
+            strcat(temp, ligne[0]);
+            
+            // Ajouter les autres colonnes
             for (int i = 1; i < cols; i++)
             {
-                strcat(buffer, "#");
-                if (ligne[i])
-                {
-                    strcat(buffer, ligne[i]);
-                }
-                else
-                {
-                    strcat(buffer, "");
+                strcat(temp, "#");
+                if (ligne[i]) {
+                    strcat(temp, ligne[i]);
                 }
             }
-            strcat(temp, buffer);
-            first = 0;
         }
         mysql_free_result(resultat);
     }
@@ -106,183 +110,32 @@ bool executerRequeteBD(const char *commande, const char *requeteSQL, char *repon
 
 bool CBP(char *requete, char *reponse, int socket)
 {
-    char *ptr = strtok(requete, "#");
-
-    if (strcmp(ptr, LOGIN) == 0)
-    {
-        char nom[MAX_NAME_LEN], prenom[MAX_NAME_LEN], numeroPatientStr[MAX_ID_LEN], nouveauPatientStr[FLAG_LEN];
-        int numeroPatient, nouveauPatient, patientId;
-
-        strcpy(nom, strtok(NULL, "#"));
-        strcpy(prenom, strtok(NULL, "#"));
-        strcpy(numeroPatientStr, strtok(NULL, "#"));
-        strcpy(nouveauPatientStr, strtok(NULL, "#"));
-
-        numeroPatient = atoi(numeroPatientStr);
-        nouveauPatient = atoi(nouveauPatientStr);
-
-        const char *nouveauText;
-        if (nouveauPatient)
-        {
-            nouveauText = "OUI";
-        }
-        else
-        {
-            nouveauText = "NON";
-        }
-        printf("\t[THREAD %lu] LOGIN de %s %s (nouveau: %s)\n",
-               (unsigned long)pthread_self(), nom, prenom, nouveauText);
-
-        if (estPresent(socket) >= 0)
-        {
-            sprintf(reponse, LOGIN "#" KO "#Client déjà loggé !");
-            return false;
-        }
-
-        int resultatLogin = CBP_Login(nom, prenom, numeroPatient, nouveauPatient, &patientId);
-
-        switch (resultatLogin)
-        {
-        case SUCCES:
-            if (nouveauPatient)
-            {
-                sprintf(reponse, LOGIN "#" OK "#%d", patientId);
-            }
-            else
-            {
-                sprintf(reponse, LOGIN "#" OK "#%d", patientId);
-            }
-            ajoute(socket, patientId, nom, prenom);
-            break;
-
-        case PATIENT_NON_TROUVE:
-            sprintf(reponse, LOGIN "#" KO "#Patient non trouvé !");
-            return false;
-
-        case ERREUR_BD:
-            sprintf(reponse, LOGIN "#" KO "#Erreur base de données !");
-            return false;
-
-        default:
-            sprintf(reponse, LOGIN "#" KO "#Erreur d'authentification !");
-            return false;
-        }
+    char *commande = strtok(requete, "#");
+    char *params = strtok(NULL, ""); // Récupère le reste
+    
+    // Dispatch vers les handlers appropriés
+    if (strcmp(commande, LOGIN) == 0) {
+        return handleLogin(params, reponse, socket);
     }
-
-    else if (strcmp(ptr, LOGOUT) == 0)
-    {
-        printf("\t[THREAD %lu] LOGOUT\n", (unsigned long)pthread_self());
-        retire(socket);
-        sprintf(reponse, LOGOUT "#" OK "#");
-        return false;
+    else if (strcmp(commande, LOGOUT) == 0) {
+        return handleLogout(reponse, socket);
     }
-
-    else if (strcmp(ptr, GET_SPECIALTIES) == 0)
-    {
-        printf("\t[THREAD %lu] GET_SPECIALTIES\n", (unsigned long)pthread_self());
-        if (!verifierAuthentification(socket, GET_SPECIALTIES, reponse))
-            return true;
-
-        char temp[BIG_BUF];
-        executerRequeteBD(GET_SPECIALTIES, "SELECT name FROM specialties ORDER BY name", reponse, temp);
+    else if (strcmp(commande, GET_SPECIALTIES) == 0) {
+        return handleGetSpecialties(reponse, socket);
     }
-
-    else if (strcmp(ptr, GET_DOCTORS) == 0)
-    {
-        printf("\t[THREAD %lu] GET_DOCTORS\n", (unsigned long)pthread_self());
-        if (!verifierAuthentification(socket, GET_DOCTORS, reponse))
-            return true;
-
-        char temp[BIG_BUF];
-        executerRequeteBD(GET_DOCTORS,
-                          "SELECT d.id, CONCAT(d.last_name, ' ', d.first_name), s.name FROM doctors d "
-                          "JOIN specialties s ON d.specialty_id = s.id ORDER BY d.last_name, d.first_name",
-                          reponse, temp);
+    else if (strcmp(commande, GET_DOCTORS) == 0) {
+        return handleGetDoctors(reponse, socket);
     }
-
-    else if (strcmp(ptr, SEARCH_CONSULTATIONS) == 0)
-    {
-        char specialty[MAX_NAME_LEN], doctor[MAX_NAME_LEN], startDate[20], endDate[20];
-        strcpy(specialty, strtok(NULL, "#"));
-        strcpy(doctor, strtok(NULL, "#"));
-        strcpy(startDate, strtok(NULL, "#"));
-        strcpy(endDate, strtok(NULL, "#"));
-
-        printf("\t[THREAD %lu] SEARCH_CONSULTATIONS\n", (unsigned long)pthread_self());
-        if (!verifierAuthentification(socket, SEARCH_CONSULTATIONS, reponse))
-            return true;
-
-        char requeteSQL[BIG_BUF], temp[HUGE_BUF];
-        sprintf(requeteSQL,
-                "SELECT c.id, CONCAT(d.last_name, ' ', d.first_name), s.name, c.date, c.hour "
-                "FROM consultations c JOIN doctors d ON c.doctor_id = d.id "
-                "JOIN specialties s ON d.specialty_id = s.id WHERE c.patient_id IS NULL "
-                "AND ('%s' = '" TOUTES "' OR s.name = '%s') "
-                "AND ('%s' = '" TOUS "' OR CONCAT(d.last_name, ' ', d.first_name) = '%s') "
-                "AND c.date >= '%s' AND c.date <= '%s' ORDER BY c.date, c.hour",
-                specialty, specialty, doctor, doctor, startDate, endDate);
-
-        executerRequeteBD(SEARCH_CONSULTATIONS, requeteSQL, reponse, temp);
+    else if (strcmp(commande, SEARCH_CONSULTATIONS) == 0) {
+        return handleSearchConsultations(params, reponse, socket);
     }
-
-    else if (strcmp(ptr, BOOK_CONSULTATION) == 0)
-    {
-        char consultationId[MAX_ID_LEN], reason[SMALL_BUF];
-        strcpy(consultationId, strtok(NULL, "#"));
-        strcpy(reason, strtok(NULL, "#"));
-
-        printf("\t[THREAD %lu] BOOK_CONSULTATION\n", (unsigned long)pthread_self());
-        if (!verifierAuthentification(socket, BOOK_CONSULTATION, reponse))
-            return true;
-
-        // Récupérer l'ID du patient connecté
-        int indexClient = estPresent(socket);
-        if (indexClient == -1)
-        {
-            sprintf(reponse, BOOK_CONSULTATION "#" KO "#Patient non trouvé !");
-            return true;
-        }
-
-        int patientId = clients[indexClient].patientId;
-
-        pthread_mutex_lock(&mutexBD);
-        if (connexionBD == NULL && connecterBD() != 0)
-        {
-            pthread_mutex_unlock(&mutexBD);
-            sprintf(reponse, BOOK_CONSULTATION "#" KO "#Erreur connexion BD !");
-        }
-        else
-        {
-            char requeteSQL[BIG_BUF];
-            sprintf(requeteSQL,
-                    "UPDATE consultations SET patient_id = %d, reason = '%s' WHERE id = %s AND patient_id IS NULL",
-                    patientId, reason, consultationId);
-
-            if (mysql_query(connexionBD, requeteSQL))
-            {
-                sprintf(reponse, BOOK_CONSULTATION "#" KO "#Erreur requête BD !");
-            }
-            else
-            {
-                const char *status;
-                const char *message;
-                if (mysql_affected_rows(connexionBD) > 0)
-                {
-                    status = OK;
-                    message = "Consultation réservée !";
-                }
-                else
-                {
-                    status = KO;
-                    message = "Consultation non disponible !";
-                }
-                sprintf(reponse, BOOK_CONSULTATION "#%s#%s", status, message);
-            }
-            pthread_mutex_unlock(&mutexBD);
-        }
+    else if (strcmp(commande, BOOK_CONSULTATION) == 0) {
+        return handleBookConsultation(params, reponse, socket);
     }
-
-    return true;
+    else {
+        formatErrorResponse(reponse, commande, "Commande inconnue !");
+        return true;
+    }
 }
 int CBP_Login(const char *nom, const char *prenom, int numeroPatient, int nouveauPatient, int *patientId)
 {
@@ -477,4 +330,217 @@ int CBP_GetPatientsConnectes(char *buffer, int tailleBuff)
     int nb = nbClients;
     pthread_mutex_unlock(&mutexClients);
     return nb;
+}
+
+// ============================================================================
+// FONCTIONS HELPER POUR SIMPLIFIER LE CODE
+// ============================================================================
+
+void formatErrorResponse(char* reponse, const char* commande, const char* message)
+{
+    sprintf(reponse, "%s#%s#%s", commande, KO, message);
+}
+
+void formatSuccessResponse(char* reponse, const char* commande, const char* data)
+{
+    sprintf(reponse, "%s#%s#%s", commande, OK, data);
+}
+
+bool handleLogin(char* params, char* reponse, int socket)
+{
+    char nom[MAX_NAME_LEN], prenom[MAX_NAME_LEN], numeroPatientStr[MAX_ID_LEN], nouveauPatientStr[FLAG_LEN];
+    int numeroPatient, nouveauPatient, patientId;
+
+    // Parser les paramètres
+    char* paramsCopy = strdup(params);
+    char* token = strtok(paramsCopy, "#");
+    strcpy(nom, token ? token : "");
+    
+    token = strtok(NULL, "#");
+    strcpy(prenom, token ? token : "");
+    
+    token = strtok(NULL, "#");
+    strcpy(numeroPatientStr, token ? token : "1");
+    
+    token = strtok(NULL, "#");
+    strcpy(nouveauPatientStr, token ? token : "0");
+    
+    free(paramsCopy);
+
+    numeroPatient = atoi(numeroPatientStr);
+    nouveauPatient = atoi(nouveauPatientStr);
+
+    printf("\t[THREAD %lu] LOGIN de %s %s (nouveau: %s)\n",
+           (unsigned long)pthread_self(), nom, prenom, nouveauPatient ? "OUI" : "NON");
+
+    if (estPresent(socket) >= 0)
+    {
+        formatErrorResponse(reponse, LOGIN, "Client déjà loggé !");
+        return false;
+    }
+
+    int resultatLogin = CBP_Login(nom, prenom, numeroPatient, nouveauPatient, &patientId);
+
+    switch (resultatLogin)
+    {
+    case SUCCES:
+        sprintf(reponse, LOGIN "#" OK "#%d", patientId);
+        ajoute(socket, patientId, nom, prenom);
+        break;
+
+    case PATIENT_NON_TROUVE:
+        formatErrorResponse(reponse, LOGIN, "Patient non trouvé !");
+        return false;
+
+    case ERREUR_BD:
+        formatErrorResponse(reponse, LOGIN, "Erreur base de données !");
+        return false;
+
+    default:
+        formatErrorResponse(reponse, LOGIN, "Erreur d'authentification !");
+        return false;
+    }
+    
+    return true;
+}
+
+bool handleLogout(char* reponse, int socket)
+{
+    printf("\t[THREAD %lu] LOGOUT\n", (unsigned long)pthread_self());
+    retire(socket);
+    formatSuccessResponse(reponse, LOGOUT, "");
+    return false;
+}
+
+bool handleGetSpecialties(char* reponse, int socket)
+{
+    printf("\t[THREAD %lu] GET_SPECIALTIES\n", (unsigned long)pthread_self());
+    if (!verifierAuthentification(socket, GET_SPECIALTIES, reponse))
+        return true;
+
+    char temp[BIG_BUF];
+    const char* SQL_GET_SPECIALTIES = "SELECT name FROM specialties ORDER BY name";
+    executerRequeteBD(GET_SPECIALTIES, SQL_GET_SPECIALTIES, reponse, temp);
+    return true;
+}
+
+bool handleGetDoctors(char* reponse, int socket)
+{
+    printf("\t[THREAD %lu] GET_DOCTORS\n", (unsigned long)pthread_self());
+    if (!verifierAuthentification(socket, GET_DOCTORS, reponse))
+        return true;
+
+    char temp[BIG_BUF];
+    const char* SQL_GET_DOCTORS = 
+        "SELECT d.id, CONCAT(d.last_name, ' ', d.first_name), s.name "
+        "FROM doctors d "
+        "JOIN specialties s ON d.specialty_id = s.id "
+        "ORDER BY d.last_name, d.first_name";
+    
+    executerRequeteBD(GET_DOCTORS, SQL_GET_DOCTORS, reponse, temp);
+    return true;
+}
+
+bool handleSearchConsultations(char* params, char* reponse, int socket)
+{
+    char specialty[MAX_NAME_LEN], doctor[MAX_NAME_LEN], startDate[20], endDate[20];
+    
+    // Parser les paramètres
+    char* paramsCopy = strdup(params);
+    char* token = strtok(paramsCopy, "#");
+    strcpy(specialty, token ? token : "");
+    
+    token = strtok(NULL, "#");
+    strcpy(doctor, token ? token : "");
+    
+    token = strtok(NULL, "#");
+    strcpy(startDate, token ? token : "");
+    
+    token = strtok(NULL, "#");
+    strcpy(endDate, token ? token : "");
+    
+    free(paramsCopy);
+
+    printf("\t[THREAD %lu] SEARCH_CONSULTATIONS\n", (unsigned long)pthread_self());
+    if (!verifierAuthentification(socket, SEARCH_CONSULTATIONS, reponse))
+        return true;
+
+    char requeteSQL[BIG_BUF], temp[HUGE_BUF];
+    const char* SQL_SEARCH_TEMPLATE = 
+        "SELECT c.id, CONCAT(d.last_name, ' ', d.first_name), s.name, c.date, c.hour "
+        "FROM consultations c "
+        "JOIN doctors d ON c.doctor_id = d.id "
+        "JOIN specialties s ON d.specialty_id = s.id "
+        "WHERE c.patient_id IS NULL "
+        "AND ('%s' = '" TOUTES "' OR s.name = '%s') "
+        "AND ('%s' = '" TOUS "' OR CONCAT(d.last_name, ' ', d.first_name) = '%s') "
+        "AND c.date >= '%s' AND c.date <= '%s' "
+        "ORDER BY c.date, c.hour";
+    
+    sprintf(requeteSQL, SQL_SEARCH_TEMPLATE,
+            specialty, specialty, doctor, doctor, startDate, endDate);
+
+    executerRequeteBD(SEARCH_CONSULTATIONS, requeteSQL, reponse, temp);
+    return true;
+}
+
+bool handleBookConsultation(char* params, char* reponse, int socket)
+{
+    char consultationId[MAX_ID_LEN], reason[SMALL_BUF];
+    
+    // Parser les paramètres
+    char* paramsCopy = strdup(params);
+    char* token = strtok(paramsCopy, "#");
+    strcpy(consultationId, token ? token : "");
+    
+    token = strtok(NULL, "#");
+    strcpy(reason, token ? token : "");
+    
+    free(paramsCopy);
+
+    printf("\t[THREAD %lu] BOOK_CONSULTATION\n", (unsigned long)pthread_self());
+    if (!verifierAuthentification(socket, BOOK_CONSULTATION, reponse))
+        return true;
+
+    // Récupérer l'ID du patient connecté
+    int indexClient = estPresent(socket);
+    if (indexClient == -1)
+    {
+        formatErrorResponse(reponse, BOOK_CONSULTATION, "Patient non trouvé !");
+        return true;
+    }
+
+    int patientId = clients[indexClient].patientId;
+
+    pthread_mutex_lock(&mutexBD);
+    if (connexionBD == NULL && connecterBD() != 0)
+    {
+        pthread_mutex_unlock(&mutexBD);
+        formatErrorResponse(reponse, BOOK_CONSULTATION, "Erreur connexion BD !");
+        return true;
+    }
+
+    char requeteSQL[BIG_BUF];
+    sprintf(requeteSQL,
+            "UPDATE consultations SET patient_id = %d, reason = '%s' WHERE id = %s AND patient_id IS NULL",
+            patientId, reason, consultationId);
+
+    if (mysql_query(connexionBD, requeteSQL))
+    {
+        formatErrorResponse(reponse, BOOK_CONSULTATION, "Erreur requête BD !");
+    }
+    else
+    {
+        if (mysql_affected_rows(connexionBD) > 0)
+        {
+            formatSuccessResponse(reponse, BOOK_CONSULTATION, "Consultation réservée !");
+        }
+        else
+        {
+            formatErrorResponse(reponse, BOOK_CONSULTATION, "Consultation non disponible !");
+        }
+    }
+    pthread_mutex_unlock(&mutexBD);
+    
+    return true;
 }

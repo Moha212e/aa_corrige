@@ -366,22 +366,25 @@ bool MainWindowClientConsultationBooker::chargerDocteurs()
         clearComboBoxDoctors();
         addComboBoxDoctors(TOUS);
         
-        string data = reponse.substr(strlen(GET_DOCTORS) + 4); // Enlever "GET_DOCTORS#ok"
-        size_t pos = 0;
-        while ((pos = data.find(diez)) != string::npos)
-        {
-            data = data.substr(pos + 1); // Enlever le #
-            size_t nextPos = data.find(diez);
-            if (nextPos != string::npos)
-            {
-                string docteur = data.substr(nextPos + 1);
-                size_t endPos = docteur.find(diez);
-                if (endPos != string::npos)
-                {
-                    docteur = docteur.substr(0, endPos);
+        // Format attendu: GET_DOCTORS#ok##id1#nom1#specialite1|id2#nom2#specialite2|...
+        string data = reponse.substr(strlen(GET_DOCTORS) + 4); // Enlever "GET_DOCTORS#ok#"
+        
+        // Enlever le premier # s'il existe
+        if (!data.empty() && data[0] == '#') {
+            data = data.substr(1);
+        }
+        
+        // Parser les docteurs séparés par |
+        stringstream ss(data);
+        string docteurInfo;
+        while (getline(ss, docteurInfo, '|')) {
+            if (!docteurInfo.empty()) {
+                // Extraire le nom (deuxième champ) de "id#nom#specialite"
+                stringstream ssDocteur(docteurInfo);
+                string id, nom, specialite;
+                if (getline(ssDocteur, id, '#') && getline(ssDocteur, nom, '#')) {
+                    addComboBoxDoctors(nom);
                 }
-                addComboBoxDoctors(docteur);
-                data = data.substr(nextPos + 1);
             }
         }
         return true;
@@ -406,42 +409,33 @@ bool MainWindowClientConsultationBooker::rechercherConsultations(const string& s
     {
         clearTableConsultations();
         
-        string data = reponse.substr(strlen(SEARCH_CONSULTATIONS) + 4); // Enlever "SEARCH_CONSULTATIONS#ok"
+        // Format attendu: SEARCH_CONSULTATIONS#ok##id1#docteur1#specialite1#date1#heure1|id2#docteur2#specialite2#date2#heure2|...
+        string data = reponse.substr(strlen(SEARCH_CONSULTATIONS) + 4); // Enlever "SEARCH_CONSULTATIONS#ok#"
         
-        vector<string> consultations;
-        size_t pos = 0;
-        while ((pos = data.find(pipeSeparator)) != string::npos)
-        {
-            consultations.push_back(data.substr(0, pos));
-            data = data.substr(pos + 1);
+        // Enlever le premier # s'il existe
+        if (!data.empty() && data[0] == '#') {
+            data = data.substr(1);
         }
-        if (!data.empty())
-            consultations.push_back(data);
         
-        for (const string& consultation : consultations)
-        {
-            string data = consultation;
-            if (data.empty()) continue;
-            
-            string champs[5];
-            for (int i = 0; i < 5; i++)
-            {
-                size_t nextPos = data.find(diez);
-                if (nextPos != string::npos)
-                {
-                    champs[i] = data.substr(0, nextPos);
-                    data = data.substr(nextPos + 1);
+        // Parser les consultations séparées par |
+        stringstream ss(data);
+        string consultation;
+        while (getline(ss, consultation, '|')) {
+            if (!consultation.empty()) {
+                // Extraire les champs de "id#docteur#specialite#date#heure"
+                stringstream ssConsultation(consultation);
+                string id, docteur, specialite, date, heure;
+                
+                if (getline(ssConsultation, id, '#') && 
+                    getline(ssConsultation, docteur, '#') && 
+                    getline(ssConsultation, specialite, '#') && 
+                    getline(ssConsultation, date, '#') && 
+                    getline(ssConsultation, heure, '#')) {
+                    
+                    if (!id.empty()) {
+                        addTupleTableConsultations(atoi(id.c_str()), specialite, docteur, date, heure);
+                    }
                 }
-                else
-                {
-                    champs[i] = data;
-                    break;
-                }
-            }
-            
-            if (!champs[0].empty())
-            {
-                addTupleTableConsultations(atoi(champs[0].c_str()), champs[2], champs[1], champs[3], champs[4]);
             }
         }
         return true;
