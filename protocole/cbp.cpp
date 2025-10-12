@@ -291,16 +291,32 @@ bool handleLogin(char* params, char* reponse, int socket)
 
     char* paramsCopy = strdup(params);
     char* token = strtok(paramsCopy, "#");
-    strcpy(nom, token ? token : "");
-    
-    token = strtok(NULL, "#");
-    strcpy(prenom, token ? token : "");
-    
-    token = strtok(NULL, "#");
-    strcpy(numeroPatientStr, token ? token : "1");
-    
-    token = strtok(NULL, "#");
-    strcpy(nouveauPatientStr, token ? token : "0");
+        if (token) {
+            strcpy(nom, token);
+        } else {
+            strcpy(nom, "");
+        }
+
+        token = strtok(NULL, "#");
+        if (token) {
+            strcpy(prenom, token);
+        } else {
+            strcpy(prenom, "");
+        }
+
+        token = strtok(NULL, "#");
+        if (token) {
+            strcpy(numeroPatientStr, token);
+        } else {
+            strcpy(numeroPatientStr, "1");
+        }
+
+        token = strtok(NULL, "#");
+        if (token) {
+            strcpy(nouveauPatientStr, token);
+        } else {
+            strcpy(nouveauPatientStr, "0");
+        }
     
     free(paramsCopy);
 
@@ -380,43 +396,77 @@ bool handleGetDoctors(char* reponse, int socket)
 
 bool handleSearchConsultations(char* params, char* reponse, int socket)
 {
+    // Déclaration des variables pour stocker les critères de recherche
     char specialty[MAX_NAME_LEN], doctor[MAX_NAME_LEN], startDate[20], endDate[20];
     
+    // Création d'une copie des paramètres pour éviter de modifier l'original
     char* paramsCopy = strdup(params);
+    
+    // Extraction du premier paramètre : la spécialité médicale
     char* token = strtok(paramsCopy, "#");
-    strcpy(specialty, token ? token : "");
+    if (token) {
+        strcpy(specialty, token);  // Copie la spécialité si elle existe
+    } else {
+        strcpy(specialty, "");     // Utilise une chaîne vide par défaut
+    }
     
+    // Extraction du deuxième paramètre : le nom du médecin
     token = strtok(NULL, "#");
-    strcpy(doctor, token ? token : "");
+    if (token) {
+        strcpy(doctor, token);     // Copie le nom du médecin si il existe
+    } else {
+        strcpy(doctor, "");        // Utilise une chaîne vide par défaut
+    }
     
+    // Extraction du troisième paramètre : la date de début
     token = strtok(NULL, "#");
-    strcpy(startDate, token ? token : "");
+    if (token) {
+        strcpy(startDate, token);  // Copie la date de début si elle existe
+    } else {
+        strcpy(startDate, "");     // Utilise une chaîne vide par défaut
+    }
     
+    // Extraction du quatrième paramètre : la date de fin
     token = strtok(NULL, "#");
-    strcpy(endDate, token ? token : "");
+    if (token) {
+        strcpy(endDate, token);    // Copie la date de fin si elle existe
+    } else {
+        strcpy(endDate, "");       // Utilise une chaîne vide par défaut
+    }
     
+    // Libération de la mémoire allouée pour la copie des paramètres
     free(paramsCopy);
 
+    // Affichage d'un message de log pour tracer l'exécution
     printf("\t[THREAD %lu] SEARCH_CONSULTATIONS\n", (unsigned long)pthread_self());
-    if (!verifierAuthentification(socket, SEARCH_CONSULTATIONS, reponse))
-        return true;
-
-    char requeteSQL[BIG_BUF], temp[HUGE_BUF];
-    const char* SQL_SEARCH_TEMPLATE = 
-        "SELECT c.id, CONCAT(d.last_name, ' ', d.first_name), s.name, c.date, c.hour "
-        "FROM consultations c "
-        "JOIN doctors d ON c.doctor_id = d.id "
-        "JOIN specialties s ON d.specialty_id = s.id "
-        "WHERE c.patient_id IS NULL "
-        "AND ('%s' = '" TOUTES "' OR s.name = '%s') "
-        "AND ('%s' = '" TOUS "' OR CONCAT(d.last_name, ' ', d.first_name) = '%s') "
-        "AND c.date >= '%s' AND c.date <= '%s' "
-        "ORDER BY c.date, c.hour";
     
+    // Vérification que le client est bien authentifié
+    if (!verifierAuthentification(socket, SEARCH_CONSULTATIONS, reponse))
+        return true;  // Retourne true pour maintenir la connexion ouverte
+
+    // Déclaration des buffers pour la requête SQL et la réponse temporaire
+    char requeteSQL[BIG_BUF], temp[HUGE_BUF];
+    
+    // Template de la requête SQL avec des placeholders %s
+    const char* SQL_SEARCH_TEMPLATE = 
+        "SELECT c.id, CONCAT(d.last_name, ' ', d.first_name), s.name, c.date, c.hour "  // Sélection des colonnes
+        "FROM consultations c "                                                           // Table principale
+        "JOIN doctors d ON c.doctor_id = d.id "                                         // Jointure avec la table doctors
+        "JOIN specialties s ON d.specialty_id = s.id "                                  // Jointure avec la table specialties
+        "WHERE c.patient_id IS NULL "                                                   // Consultations libres uniquement
+        "AND ('%s' = '" TOUTES "' OR s.name = '%s') "                                  // Filtre optionnel sur la spécialité
+        "AND ('%s' = '" TOUS "' OR CONCAT(d.last_name, ' ', d.first_name) = '%s') "    // Filtre optionnel sur le médecin
+        "AND c.date >= '%s' AND c.date <= '%s' "                                       // Filtre sur la période
+        "ORDER BY c.date, c.hour";                                                     // Tri par date puis heure
+    
+    // Construction de la requête SQL finale en remplaçant les %s par les valeurs réelles
     sprintf(requeteSQL, SQL_SEARCH_TEMPLATE,
             specialty, specialty, doctor, doctor, startDate, endDate);
 
+    // Exécution de la requête SQL et formatage de la réponse
     executerRequeteBD(SEARCH_CONSULTATIONS, requeteSQL, reponse, temp);
+    
+    // Retourne true pour maintenir la connexion client ouverte
     return true;
 }
 
