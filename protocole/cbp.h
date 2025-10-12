@@ -25,24 +25,6 @@ bool CBP(char* requete, char* reponse, int socket);
 int CBP_Login(const char* nom, const char* prenom, int numeroPatient, int nouveauPatient, int* patientId);
 
 /**
- * Effectue une opération arithmétique simple
- * @param op Opérateur (+, -, *, /)
- * @param a Premier opérande
- * @param b Deuxième opérande
- * @return Résultat de l'opération
- * @throws Exception si division par zéro
- */
-int CBP_Operation(char op, int a, int b);
-
-/**
- * Récupère la liste des patients actuellement connectés
- * @param buffer Buffer pour stocker la liste formatée des patients
- * @param tailleBuff Taille maximale du buffer
- * @return Nombre de patients connectés
- */
-int CBP_GetPatientsConnectes(char* buffer, int tailleBuff);
-
-/**
  * Ferme proprement le protocole CBP
  * Ferme toutes les connexions clients et déconnecte la base de données
  */

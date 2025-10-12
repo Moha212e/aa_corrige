@@ -33,7 +33,6 @@ pthread_mutex_t mutexBD = PTHREAD_MUTEX_INITIALIZER;
 int connecterBD();
 void deconnecterBD();
 
-// Fonctions helper pour simplifier le code
 void formatErrorResponse(char* reponse, const char* commande, const char* message);
 void formatSuccessResponse(char* reponse, const char* commande, const char* data);
 bool handleLogin(char* params, char* reponse, int socket);
@@ -81,7 +80,6 @@ bool executerRequeteBD(const char *commande, const char *requeteSQL, char *repon
         {
             int cols = mysql_num_fields(resultat);
 
-            // Ajouter le séparateur
             if (first) {
                 strcat(temp, "#");
                 first = false;
@@ -89,10 +87,8 @@ bool executerRequeteBD(const char *commande, const char *requeteSQL, char *repon
                 strcat(temp, "|");
             }
             
-            // Ajouter la première colonne
             strcat(temp, ligne[0]);
             
-            // Ajouter les autres colonnes
             for (int i = 1; i < cols; i++)
             {
                 strcat(temp, "#");
@@ -111,9 +107,8 @@ bool executerRequeteBD(const char *commande, const char *requeteSQL, char *repon
 bool CBP(char *requete, char *reponse, int socket)
 {
     char *commande = strtok(requete, "#");
-    char *params = strtok(NULL, ""); // Récupère le reste
+    char *params = strtok(NULL, "");
     
-    // Dispatch vers les handlers appropriés
     if (strcmp(commande, LOGIN) == 0) {
         return handleLogin(params, reponse, socket);
     }
@@ -163,7 +158,6 @@ int CBP_Login(const char *nom, const char *prenom, int numeroPatient, int nouvea
             return ERREUR_BD;
         }
 
-        // Récupérer l'ID généré
         *patientId = (int)mysql_insert_id(connexionBD);
         pthread_mutex_unlock(&mutexBD);
         return SUCCES;
@@ -196,23 +190,6 @@ int CBP_Login(const char *nom, const char *prenom, int numeroPatient, int nouvea
         pthread_mutex_unlock(&mutexBD);
         return PATIENT_NON_TROUVE;
     }
-}
-
-int CBP_Operation(char op, int a, int b)
-{
-    if (op == '+')
-        return a + b;
-    if (op == '-')
-        return a - b;
-    if (op == '*')
-        return a * b;
-    if (op == '/')
-    {
-        if (b == 0)
-            throw 1;
-        return a / b;
-    }
-    return 0;
 }
 
 int estPresent(int socket)
@@ -266,7 +243,7 @@ void CBP_Close()
 int connecterBD()
 {
     if (connexionBD != NULL)
-        return 0; // Déjà connecté
+        return 0;
 
     connexionBD = mysql_init(NULL);
     if (connexionBD == NULL)
@@ -297,45 +274,6 @@ void deconnecterBD()
     }
 }
 
-int CBP_GetPatientsConnectes(char *buffer, int tailleBuff)
-{
-    pthread_mutex_lock(&mutexClients);
-
-    strcpy(buffer, "");
-    for (int i = 0; i < nbClients; i++)
-    {
-        char lignePatient[MED_BUF];
-        const char *separator;
-        if (i == 0)
-        {
-            separator = "";
-        }
-        else
-        {
-            separator = "|";
-        }
-        sprintf(lignePatient, "%s%d#%s#%s#%s",
-                separator,
-                clients[i].patientId,
-                clients[i].nom,
-                clients[i].prenom,
-                clients[i].ip);
-
-        if (strlen(buffer) + strlen(lignePatient) < (size_t)(tailleBuff - 1))
-        {
-            strcat(buffer, lignePatient);
-        }
-    }
-
-    int nb = nbClients;
-    pthread_mutex_unlock(&mutexClients);
-    return nb;
-}
-
-// ============================================================================
-// FONCTIONS HELPER POUR SIMPLIFIER LE CODE
-// ============================================================================
-
 void formatErrorResponse(char* reponse, const char* commande, const char* message)
 {
     sprintf(reponse, "%s#%s#%s", commande, KO, message);
@@ -351,7 +289,6 @@ bool handleLogin(char* params, char* reponse, int socket)
     char nom[MAX_NAME_LEN], prenom[MAX_NAME_LEN], numeroPatientStr[MAX_ID_LEN], nouveauPatientStr[FLAG_LEN];
     int numeroPatient, nouveauPatient, patientId;
 
-    // Parser les paramètres
     char* paramsCopy = strdup(params);
     char* token = strtok(paramsCopy, "#");
     strcpy(nom, token ? token : "");
@@ -445,7 +382,6 @@ bool handleSearchConsultations(char* params, char* reponse, int socket)
 {
     char specialty[MAX_NAME_LEN], doctor[MAX_NAME_LEN], startDate[20], endDate[20];
     
-    // Parser les paramètres
     char* paramsCopy = strdup(params);
     char* token = strtok(paramsCopy, "#");
     strcpy(specialty, token ? token : "");
@@ -488,7 +424,6 @@ bool handleBookConsultation(char* params, char* reponse, int socket)
 {
     char consultationId[MAX_ID_LEN], reason[SMALL_BUF];
     
-    // Parser les paramètres
     char* paramsCopy = strdup(params);
     char* token = strtok(paramsCopy, "#");
     strcpy(consultationId, token ? token : "");
@@ -502,7 +437,6 @@ bool handleBookConsultation(char* params, char* reponse, int socket)
     if (!verifierAuthentification(socket, BOOK_CONSULTATION, reponse))
         return true;
 
-    // Récupérer l'ID du patient connecté
     int indexClient = estPresent(socket);
     if (indexClient == -1)
     {
