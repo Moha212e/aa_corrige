@@ -417,27 +417,33 @@ bool MainWindowClientConsultationBooker::rechercherConsultations(const string& s
             data = data.substr(1);
         }
         
-        // Parser les consultations séparées par |
-        stringstream ss(data);
+        // Exemple de format attendu pour 'data' :
+        // "12#Dr. Martin#Cardiologie#2025-10-15#09:00|15#Dr. Dupont#Dermatologie#2025-10-16#11:30|"
+        // Chaque consultation est séparée par '|', chaque champ par '#'
+        // id#docteur#specialite#date#heure|id#docteur#specialite#date#heure|...
+        //
+        // Après le parsing, on obtient pour chaque consultation :
+        //   id = 12, docteur = Dr. Martin, specialite = Cardiologie, date = 2025-10-15, heure = 09:00
+        //   id = 15, docteur = Dr. Dupont, specialite = Dermatologie, date = 2025-10-16, heure = 11:30
+        stringstream ss(data); // Utiliser stringstream pour le parsing
         string consultation;
         while (getline(ss, consultation, '|')) {
             if (!consultation.empty()) {
-                // Extraire les champs de "id#docteur#specialite#date#heure"
+                // Pour chaque consultation, on extrait les champs séparés par '#'
                 stringstream ssConsultation(consultation);
                 string id, docteur, specialite, date, heure;
-                
                 if (getline(ssConsultation, id, '#') && 
                     getline(ssConsultation, docteur, '#') && 
                     getline(ssConsultation, specialite, '#') && 
                     getline(ssConsultation, date, '#') && 
                     getline(ssConsultation, heure, '#')) {
-                    
+                    // Ici, on peut utiliser les valeurs extraites pour afficher dans le tableau
                     if (!id.empty()) {
                         addTupleTableConsultations(atoi(id.c_str()), specialite, docteur, date, heure);
                     }
                 }
             }
-        }
+        } // Fin du parsing des consultations
         return true;
     }
     else
