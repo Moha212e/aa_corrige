@@ -53,6 +53,7 @@ pthread_mutex_t mutexBD = PTHREAD_MUTEX_INITIALIZER;
 
 int connecterBD();
 void deconnecterBD();
+void obtenirIPClient(int socket, char *ip);
 
 void formatErrorResponse(char* reponse, const char* commande, const char* message);
 void formatSuccessResponse(char* reponse, const char* commande, const char* data);
