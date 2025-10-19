@@ -170,7 +170,7 @@ int main() {
   // Création de la table consultations
   if (mysql_query(connexion, "CREATE TABLE IF NOT EXISTS consultations ("
                              "id INT AUTO_INCREMENT PRIMARY KEY, "
-                             "patient_id INT NOT NULL COMMENT 'ID du patient', "
+                             "patient_id INT NULL COMMENT 'ID du patient (NULL = consultation libre)', "
                              "doctor_id INT NOT NULL COMMENT 'ID du médecin', "
                              "date DATE NOT NULL COMMENT 'Date de la consultation', "
                              "hour TIME COMMENT 'Heure de la consultation', "
