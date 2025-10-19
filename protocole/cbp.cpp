@@ -586,7 +586,7 @@ bool handleListClients(char* reponse, int socket)
     (void)socket; // socket non utilisé pour le moment
     printf("\t[THREAD %lu] LIST_CLIENTS (ACBP)\n", (unsigned long)pthread_self());
     
-    char listeClients[HUGE_BUF];
+    char listeClients[HUGE_BUobF];
     obtenirListeClients(listeClients);
     
     formatSuccessResponse(reponse, LIST_CLIENTS, listeClients);

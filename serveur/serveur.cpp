@@ -17,6 +17,9 @@ void TraitementConnexionAdmin(int sService);
 void* FctThreadClient(void* p);
 void* FctThreadAdmin(void* p);
 
+void* FctAcceptCBP(void* p);
+void* FctAcceptAdmin(void* p);
+
 int chargerConfiguration(const char* nomFichier);
 
 int PORT_RESERVATION;
@@ -97,65 +100,28 @@ int main(int argc, char* argv[])
     pthread_t th;
     for (int i = 0; i < NB_THREADS_POOL; i++)
         pthread_create(&th, NULL, FctThreadClient, NULL);
-    
-    int sService;
-    char ipClient[IP_STR_LEN] = DEFAULT_SERVER_IP;
-    printf("Démarrage du serveur avec gestion de deux sockets.\n");
-    
+
+    // Lancer deux threads d'accept séparés : un pour CBP (clients) et un pour ACBP (admin)
+    pthread_t acceptThreadCBP, acceptThreadAdmin;
+    if (pthread_create(&acceptThreadCBP, NULL, FctAcceptCBP, NULL) != 0)
+    {
+        perror("Erreur création thread accept CBP");
+        exit(1);
+    }
+    if (pthread_create(&acceptThreadAdmin, NULL, FctAcceptAdmin, NULL) != 0)
+    {
+        perror("Erreur création thread accept Admin");
+        exit(1);
+    }
+    pthread_detach(acceptThreadCBP);
+    pthread_detach(acceptThreadAdmin);
+
+    printf("Démarrage du serveur (accept threads lancés).\n");
+
+    // Boucle principale légère pour garder le processus actif (les threads font le travail)
     while (1)
     {
-        fd_set readfds;
-        int max_fd;
-        
-        FD_ZERO(&readfds);
-        FD_SET(sEcoute, &readfds);
-        FD_SET(sEcouteAdmin, &readfds);
-        
-        max_fd = (sEcoute > sEcouteAdmin) ? sEcoute : sEcouteAdmin;
-        
-        printf("Attente d'une connexion sur les ports %d (CBP) ou %d (ACBP)...\n", 
-               PORT_RESERVATION, PORT_ADMIN);
-        
-        int activity = select(max_fd + 1, &readfds, NULL, NULL, NULL);
-        if (activity < 0)
-        {
-            perror("Erreur de select");
-            continue;
-        }
-        
-        // Vérifier le socket CBP (patients)
-        if (FD_ISSET(sEcoute, &readfds))
-        {
-            if ((sService = Accept(sEcoute, ipClient)) == -1)
-            {
-                perror("Erreur de Accept (CBP)");
-                continue;
-            }
-            printf("Connexion CBP acceptée : IP=%s socket=%d\n", ipClient, sService);
-            
-            pthread_mutex_lock(&mutexSocketsAcceptees);
-            socketsAcceptees[indiceEcriture] = sService;
-            indiceEcriture++;
-            if (indiceEcriture == TAILLE_FILE_ATTENTE) indiceEcriture = 0;
-            pthread_mutex_unlock(&mutexSocketsAcceptees);
-            pthread_cond_signal(&condSocketsAcceptees);
-        }
-        
-        // Vérifier le socket ACBP (admin)
-        if (FD_ISSET(sEcouteAdmin, &readfds))
-        {
-            if ((sService = Accept(sEcouteAdmin, ipClient)) == -1)
-            {
-                perror("Erreur de Accept (ACBP)");
-                continue;
-            }
-            printf("Connexion ACBP acceptée : IP=%s socket=%d\n", ipClient, sService);
-            
-            // Traiter directement la connexion admin dans un thread séparé
-            pthread_t threadAdmin;
-            pthread_create(&threadAdmin, NULL, FctThreadAdmin, (void*)&sService);
-            pthread_detach(threadAdmin);
-        }
+        sleep(1);
     }
 } 
 
@@ -185,11 +151,71 @@ void* FctThreadClient(void* p)
 void* FctThreadAdmin(void* p)
 {
     int sService = *(int*)p;
+    free(p);
     printf("\t[THREAD ADMIN %lu] Traitement connexion admin socket %d\n",
            (unsigned long)pthread_self(), sService);
     TraitementConnexionAdmin(sService);
     return NULL;
 } 
+
+// Thread d'accept pour les clients (CBP)
+void* FctAcceptCBP(void* p)
+{
+    (void)p;
+    int sService;
+    char ipClient[IP_STR_LEN] = DEFAULT_SERVER_IP;
+
+    while (1)
+    {
+        if ((sService = Accept(sEcoute, ipClient)) == -1)
+        {
+            perror("Erreur de Accept (CBP)");
+            sleep(1);
+            continue;
+        }
+        printf("Connexion CBP acceptée : IP=%s socket=%d\n", ipClient, sService);
+
+        pthread_mutex_lock(&mutexSocketsAcceptees);
+        socketsAcceptees[indiceEcriture] = sService;
+        indiceEcriture++;
+        if (indiceEcriture == TAILLE_FILE_ATTENTE) indiceEcriture = 0;
+        pthread_mutex_unlock(&mutexSocketsAcceptees);
+        pthread_cond_signal(&condSocketsAcceptees);
+    }
+    return NULL;
+}
+
+// Thread d'accept pour les admin (ACBP)
+void* FctAcceptAdmin(void* p)
+{
+    (void)p;
+    int sService;
+    char ipClient[IP_STR_LEN] = DEFAULT_SERVER_IP;
+
+    while (1)
+    {
+        if ((sService = Accept(sEcouteAdmin, ipClient)) == -1)
+        {
+            perror("Erreur de Accept (ACBP)");
+            sleep(1);
+            continue;
+        }
+        printf("Connexion ACBP acceptée : IP=%s socket=%d\n", ipClient, sService);
+
+        int* pSocket = (int*)malloc(sizeof(int));
+        if (pSocket == NULL)
+        {
+            close(sService);
+            continue;
+        }
+        *pSocket = sService;
+
+        pthread_t threadAdmin;
+        pthread_create(&threadAdmin, NULL, FctThreadAdmin, (void*)pSocket);
+        pthread_detach(threadAdmin);
+    }
+    return NULL;
+}
 
 void HandlerSIGINT(int s)
 {
