@@ -184,7 +184,7 @@ int CBP_Login(const char *nom, const char *prenom, int numeroPatient, int nouvea
     if (nouveauPatient)
     {
         sprintf(requeteSQL,
-                "INSERT INTO patients (last_name, first_name, birth_date) VALUES ('%s', '%s', '1900-01-01')",
+                "INSERT INTO patient (last_name, first_name, birth_date) VALUES ('%s', '%s', '1900-01-01')",
                 nom, prenom);
 
         printf("DEBUG: Requête SQL = %s\n", requeteSQL);
@@ -203,7 +203,7 @@ int CBP_Login(const char *nom, const char *prenom, int numeroPatient, int nouvea
     else
     {
         sprintf(requeteSQL,
-                "SELECT id FROM patients WHERE last_name = '%s' AND first_name = '%s' AND id = %d",
+                "SELECT id FROM patient WHERE last_name = '%s' AND first_name = '%s' AND id = %d",
                 nom, prenom, numeroPatient);
 
         printf("DEBUG: Requête SQL = %s\n", requeteSQL);
@@ -443,8 +443,8 @@ bool handleGetDoctors(char* reponse, int socket)
     char temp[BIG_BUF];
     const char* SQL_GET_DOCTORS = 
         "SELECT d.id, CONCAT(d.last_name, ' ', d.first_name), s.name "
-        "FROM doctors d "
-        "JOIN specialties s ON d.specialty_id = s.id "
+        "FROM doctor d "
+        "JOIN specialties s ON d.specialite_id = s.id "
         "ORDER BY d.last_name, d.first_name";
     
     executerRequeteBD(GET_DOCTORS, SQL_GET_DOCTORS, reponse, temp);
@@ -508,8 +508,8 @@ bool handleSearchConsultations(char* params, char* reponse, int socket)
     const char* SQL_SEARCH_TEMPLATE = 
         "SELECT c.id, CONCAT(d.last_name, ' ', d.first_name), s.name, c.date, c.hour "  // Sélection des colonnes
         "FROM consultations c "                                                           // Table principale
-        "JOIN doctors d ON c.doctor_id = d.id "                                         // Jointure avec la table doctors
-        "JOIN specialties s ON d.specialty_id = s.id "                                  // Jointure avec la table specialties
+        "JOIN doctor d ON c.doctor_id = d.id "                                         // Jointure avec la table doctor
+        "JOIN specialties s ON d.specialite_id = s.id "                                // Jointure avec la table specialties
         "WHERE c.patient_id IS NULL "                                                   // Consultations libres uniquement
         "AND ('%s' = '" TOUTES "' OR s.name = '%s') "                                  // Filtre optionnel sur la spécialité
         "AND ('%s' = '" TOUS "' OR CONCAT(d.last_name, ' ', d.first_name) = '%s') "    // Filtre optionnel sur le médecin

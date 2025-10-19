@@ -83,58 +83,103 @@ int main() {
     finish_with_error(connexion);
   }
 
+  // Création de la base de données si elle n'existe pas
+  mysql_query(connexion, "CREATE DATABASE IF NOT EXISTS PourStudent CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;");
+  mysql_query(connexion, "USE PourStudent;");
+
+  // Suppression des anciennes tables
   mysql_query(connexion, "DROP TABLE IF EXISTS consultations;");
-  mysql_query(connexion, "DROP TABLE IF EXISTS patients;");
-  mysql_query(connexion, "DROP TABLE IF EXISTS doctors;");
+  mysql_query(connexion, "DROP TABLE IF EXISTS patient;");
+  mysql_query(connexion, "DROP TABLE IF EXISTS doctor;");
   mysql_query(connexion, "DROP TABLE IF EXISTS specialties;");
 
-  if (mysql_query(connexion, "CREATE TABLE specialties (id INT AUTO_INCREMENT PRIMARY KEY, name VARCHAR(30));"))
+  // Création de la table specialties
+  if (mysql_query(connexion, "CREATE TABLE IF NOT EXISTS specialties ("
+                             "id INT AUTO_INCREMENT PRIMARY KEY, "
+                             "name VARCHAR(100) NOT NULL UNIQUE COMMENT 'Nom de la spécialité médicale', "
+                             "created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT 'Date de création', "
+                             "updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT 'Date de dernière modification'"
+                             ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci "
+                             "COMMENT='Table des spécialités médicales';"))
     finish_with_error(connexion);
 
-  if (mysql_query(connexion, "CREATE TABLE doctors ("
+  // Création de la table patient
+  if (mysql_query(connexion, "CREATE TABLE IF NOT EXISTS patient ("
                              "id INT AUTO_INCREMENT PRIMARY KEY, "
-                             "specialty_id INT, "
-                             "last_name VARCHAR(30), "
-                             "first_name VARCHAR(30), "
-                             "FOREIGN KEY (specialty_id) REFERENCES specialties(id));"))
+                             "first_name VARCHAR(100) NOT NULL COMMENT 'Prénom du patient', "
+                             "last_name VARCHAR(100) NOT NULL COMMENT 'Nom de famille du patient', "
+                             "birth_date DATE COMMENT 'Date de naissance du patient', "
+                             "created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT 'Date de création', "
+                             "updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT 'Date de dernière modification', "
+                             "INDEX idx_last_name (last_name), "
+                             "INDEX idx_birth_date (birth_date), "
+                             "INDEX idx_full_name (first_name, last_name)"
+                             ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci "
+                             "COMMENT='Table des patients';"))
     finish_with_error(connexion);
 
-  if (mysql_query(connexion, "CREATE TABLE patients ("
+  // Création de la table doctor
+  if (mysql_query(connexion, "CREATE TABLE IF NOT EXISTS doctor ("
                              "id INT AUTO_INCREMENT PRIMARY KEY, "
-                             "last_name VARCHAR(30), "
-                             "first_name VARCHAR(30), "
-                             "birth_date DATE);"))
+                             "first_name VARCHAR(100) NOT NULL COMMENT 'Prénom du médecin', "
+                             "last_name VARCHAR(100) NOT NULL COMMENT 'Nom de famille du médecin', "
+                             "password VARCHAR(255) NOT NULL COMMENT 'Mot de passe du médecin (hashé)', "
+                             "specialite_id INT COMMENT 'ID de la spécialité du médecin', "
+                             "created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT 'Date de création', "
+                             "updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT 'Date de dernière modification', "
+                             "FOREIGN KEY (specialite_id) REFERENCES specialties(id) ON DELETE SET NULL, "
+                             "INDEX idx_last_name (last_name), "
+                             "INDEX idx_specialite (specialite_id), "
+                             "INDEX idx_full_name (first_name, last_name)"
+                             ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci "
+                             "COMMENT='Table des médecins';"))
     finish_with_error(connexion);
 
-  if (mysql_query(connexion, "CREATE TABLE consultations ("
+  // Création de la table consultations
+  if (mysql_query(connexion, "CREATE TABLE IF NOT EXISTS consultations ("
                              "id INT AUTO_INCREMENT PRIMARY KEY, "
-                             "doctor_id INT NOT NULL, "
-                             "patient_id INT NULL, "
-                             "date DATE, "
-                             "hour VARCHAR(10), "
-                             "reason VARCHAR(100), "
-                             "FOREIGN KEY (doctor_id) REFERENCES doctors(id), "
-                             "FOREIGN KEY (patient_id) REFERENCES patients(id));"))
+                             "patient_id INT NOT NULL COMMENT 'ID du patient', "
+                             "doctor_id INT NOT NULL COMMENT 'ID du médecin', "
+                             "date DATE NOT NULL COMMENT 'Date de la consultation', "
+                             "hour TIME COMMENT 'Heure de la consultation', "
+                             "reason TEXT COMMENT 'Motif de la consultation', "
+                             "created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT 'Date de création', "
+                             "updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT 'Date de dernière modification', "
+                             "FOREIGN KEY (patient_id) REFERENCES patient(id) ON DELETE CASCADE, "
+                             "FOREIGN KEY (doctor_id) REFERENCES doctor(id) ON DELETE CASCADE, "
+                             "INDEX idx_date (date), "
+                             "INDEX idx_patient (patient_id), "
+                             "INDEX idx_doctor (doctor_id), "
+                             "INDEX idx_doctor_date (doctor_id, date), "
+                             "INDEX idx_patient_date (patient_id, date), "
+                             "UNIQUE KEY unique_appointment (doctor_id, date, hour)"
+                             ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci "
+                             "COMMENT='Table des consultations médicales';"))
     finish_with_error(connexion);
 
   char request[512];
+  
+  // Insertion des spécialités
   for (int i = 0; i < nbSpecialties; i++) {
-    sprintf(request, "INSERT INTO specialties VALUES (NULL, '%s');", specialties[i].name);
+    sprintf(request, "INSERT INTO specialties (name) VALUES ('%s');", specialties[i].name);
     if (mysql_query(connexion, request)) finish_with_error(connexion);
   }
 
+  // Insertion des médecins (avec mot de passe par défaut 'test')
   for (int i = 0; i < nbDoctors; i++) {
-    sprintf(request, "INSERT INTO doctors VALUES (NULL, %d, '%s', '%s');",
-            doctors[i].specialty_id, doctors[i].last_name, doctors[i].first_name);
+    sprintf(request, "INSERT INTO doctor (first_name, last_name, password, specialite_id) VALUES ('%s', '%s', 'test', %d);",
+            doctors[i].first_name, doctors[i].last_name, doctors[i].specialty_id);
     if (mysql_query(connexion, request)) finish_with_error(connexion);
   }
 
+  // Insertion des patients
   for (int i = 0; i < nbPatients; i++) {
-    sprintf(request, "INSERT INTO patients VALUES (NULL, '%s', '%s', '%s');",
-            patients[i].last_name, patients[i].first_name, patients[i].birth_date);
+    sprintf(request, "INSERT INTO patient (first_name, last_name, birth_date) VALUES ('%s', '%s', '%s');",
+            patients[i].first_name, patients[i].last_name, patients[i].birth_date);
     if (mysql_query(connexion, request)) finish_with_error(connexion);
   }
 
+  // Insertion des consultations
   for (int i = 0; i < nbConsultations; i++) {
     if (consultations[i].patient_id == -1) {
       sprintf(request, "INSERT INTO consultations (doctor_id, patient_id, date, hour, reason) "
