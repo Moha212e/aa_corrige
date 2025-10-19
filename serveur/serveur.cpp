@@ -33,6 +33,7 @@ pthread_mutex_t mutexSocketsAcceptees;
 pthread_cond_t condSocketsAcceptees; 
 int main(int argc, char* argv[])
 {
+    (void)argc; // argc non utilisé
     const char* fichierConfig = "serveur.conf";
     
     printf("Chargement du fichier de configuration : %s\n", fichierConfig);

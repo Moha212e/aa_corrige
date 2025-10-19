@@ -59,6 +59,7 @@ bool handleGetSpecialties(char* reponse, int socket);
 bool handleGetDoctors(char* reponse, int socket);
 bool handleSearchConsultations(char* params, char* reponse, int socket);
 bool handleBookConsultation(char* params, char* reponse, int socket);
+bool handleListClients(char* reponse, int socket);
 bool verifierAuthentification(int socket, const char *commande, char *reponse)
 {
     if (estPresent(socket) == -1)
@@ -155,7 +156,8 @@ bool CBP(char *requete, char *reponse, int socket)
 bool ACBP(char *requete, char *reponse, int socket)
 {
     char *commande = strtok(requete, "#");
-    char *params = strtok(NULL, "");
+    // params non utilisé pour le moment mais gardé pour l'extensibilité
+    (void)strtok(NULL, "");
     
     if (strcmp(commande, LIST_CLIENTS) == 0) {
         return handleListClients(reponse, socket);
@@ -581,6 +583,7 @@ bool handleBookConsultation(char* params, char* reponse, int socket)
 // Fonction pour traiter la commande LIST_CLIENTS du protocole ACBP
 bool handleListClients(char* reponse, int socket)
 {
+    (void)socket; // socket non utilisé pour le moment
     printf("\t[THREAD %lu] LIST_CLIENTS (ACBP)\n", (unsigned long)pthread_self());
     
     char listeClients[HUGE_BUF];
@@ -650,7 +653,7 @@ void obtenirListeClients(char *listeClients)
     {
         if (clientsConnectes[i].actif)
         {
-            char clientInfo[SMALL_BUF];
+            char clientInfo[MED_BUF];
             sprintf(clientInfo, "%s;%s;%s;%d\n", 
                    clientsConnectes[i].ip,
                    clientsConnectes[i].nom,
