@@ -248,7 +248,7 @@ void ajoute(int socket, int patientId, const char *nom, const char *prenom)
     clients[nbClients].patientId = patientId;
     strcpy(clients[nbClients].nom, nom);
     strcpy(clients[nbClients].prenom, prenom);
-    strcpy(clients[nbClients].ip, DEFAULT_SERVER_IP); 
+    strcpy(clients[nbClients].ip, "127.0.0.1"); // IP par défaut pour les tests
     nbClients++;
     pthread_mutex_unlock(&mutexClients);
 }
@@ -375,7 +375,7 @@ bool handleLogin(char* params, char* reponse, int socket)
         sprintf(reponse, LOGIN "#" OK "#%d", patientId);
         ajoute(socket, patientId, nom, prenom);
         // Ajouter le client à la liste globale pour ACBP
-        ajouterClientGlobal(DEFAULT_SERVER_IP, nom, prenom, patientId);
+        ajouterClientGlobal("127.0.0.1", nom, prenom, patientId);
         break;
 
     case PATIENT_NON_TROUVE:
@@ -590,7 +590,7 @@ bool handleListClients(char* reponse, int socket)
     obtenirListeClients(listeClients);
     
     formatSuccessResponse(reponse, LIST_CLIENTS, listeClients);
-    return true;
+    return false; // Fermer la connexion après avoir envoyé la liste
 }
 
 // Fonctions pour la gestion globale des clients connectés
@@ -649,6 +649,8 @@ void obtenirListeClients(char *listeClients)
     
     strcpy(listeClients, "");
     
+    printf("Nombre de clients connectés: %d\n", nbClientsConnectes);
+    
     for (int i = 0; i < nbClientsConnectes; i++)
     {
         if (clientsConnectes[i].actif)
@@ -660,7 +662,16 @@ void obtenirListeClients(char *listeClients)
                    clientsConnectes[i].prenom,
                    clientsConnectes[i].idPatient);
             strcat(listeClients, clientInfo);
+            printf("Client trouvé: %s %s (ID: %d, IP: %s)\n", 
+                   clientsConnectes[i].nom, clientsConnectes[i].prenom, 
+                   clientsConnectes[i].idPatient, clientsConnectes[i].ip);
         }
+    }
+    
+    // Si aucun client, ajouter un message
+    if (strlen(listeClients) == 0)
+    {
+        strcpy(listeClients, "Aucun client connecté\n");
     }
     
     pthread_mutex_unlock(&mutexClients);
