@@ -184,7 +184,7 @@ int CBP_Login(const char *nom, const char *prenom, int numeroPatient, int nouvea
     if (nouveauPatient)
     {
         sprintf(requeteSQL,
-                "INSERT INTO patients (last_name, first_name, birth_date) VALUES ('%s', '%s', '1900-01-01')",
+                "INSERT INTO patient (last_name, first_name, birth_date) VALUES ('%s', '%s', '1900-01-01')",
                 nom, prenom);
 
         if (mysql_query(connexionBD, requeteSQL))
@@ -200,7 +200,7 @@ int CBP_Login(const char *nom, const char *prenom, int numeroPatient, int nouvea
     else
     {
         sprintf(requeteSQL,
-                "SELECT id FROM patients WHERE last_name = '%s' AND first_name = '%s' AND id = %d",
+                "SELECT id FROM patient WHERE last_name = '%s' AND first_name = '%s' AND id = %d",
                 nom, prenom, numeroPatient);
 
         if (mysql_query(connexionBD, requeteSQL))
