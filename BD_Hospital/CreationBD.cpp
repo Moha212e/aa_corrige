@@ -101,7 +101,7 @@ CONSULTATION consultations[] = {
   {-1, 6, -1, "2025-10-26", "15:00", ""},
   {-1, 6, -1, "2025-10-26", "15:30", ""},
 };
-int nbConsultations = 36;
+int nbConsultations = 34;
 
 void finish_with_error(MYSQL *con) {
   fprintf(stderr, "%s\n", mysql_error(con));
@@ -223,11 +223,7 @@ int main() {
               consultations[i].doctor_id, consultations[i].patient_id, consultations[i].date,
               consultations[i].hour, consultations[i].reason);
     }
-    printf("DEBUG: Requête consultation %d = %s\n", i+1, request);
-    if (mysql_query(connexion, request)) {
-      printf("Erreur sur la consultation %d\n", i+1);
-      finish_with_error(connexion);
-    }
+    if (mysql_query(connexion, request)) finish_with_error(connexion);
   }
 
   mysql_close(connexion);
