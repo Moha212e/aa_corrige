@@ -13,6 +13,9 @@
 #define SEARCH_CONSULTATIONS "SEARCH_CONSULTATIONS"
 #define BOOK_CONSULTATION "BOOK_CONSULTATION"
 
+// Protocole ACBP (Admin Consultation Booking Protocol)
+#define LIST_CLIENTS "LIST_CLIENTS"
+
 #define KO "ko"
 #define OK "ok"
 

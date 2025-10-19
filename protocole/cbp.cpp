@@ -18,12 +18,30 @@ typedef struct
     char ip[IP_STR_LEN];
 } CLIENT_INFO;
 
+// Structure pour la liste globale des clients connectés (pour ACBP)
+typedef struct {
+    char ip[IP_STR_LEN];
+    char nom[MAX_NAME_LEN];
+    char prenom[MAX_NAME_LEN];
+    int idPatient;
+    int actif;  // 1 si connecté, 0 si déconnecté
+} ClientConnecte;
+
 CLIENT_INFO clients[NB_MAX_CLIENTS];
 int nbClients = 0;
+
+// Liste globale des clients connectés (pour le protocole ACBP)
+ClientConnecte clientsConnectes[NB_MAX_CLIENTS];
+int nbClientsConnectes = 0;
 
 int estPresent(int socket);
 void ajoute(int socket, int patientId, const char *nom, const char *prenom);
 void retire(int socket);
+
+// Fonctions pour la gestion globale des clients connectés (ACBP)
+void ajouterClientGlobal(const char *ip, const char *nom, const char *prenom, int idPatient);
+void retirerClientGlobal(int idPatient);
+void obtenirListeClients(char *listeClients);
 
 pthread_mutex_t mutexClients = PTHREAD_MUTEX_INITIALIZER;
 
@@ -129,6 +147,21 @@ bool CBP(char *requete, char *reponse, int socket)
     }
     else {
         formatErrorResponse(reponse, commande, "Commande inconnue !");
+        return true;
+    }
+}
+
+// Fonction pour traiter les requêtes du protocole ACBP
+bool ACBP(char *requete, char *reponse, int socket)
+{
+    char *commande = strtok(requete, "#");
+    char *params = strtok(NULL, "");
+    
+    if (strcmp(commande, LIST_CLIENTS) == 0) {
+        return handleListClients(reponse, socket);
+    }
+    else {
+        formatErrorResponse(reponse, commande, "Commande ACBP inconnue !");
         return true;
     }
 }
@@ -339,6 +372,8 @@ bool handleLogin(char* params, char* reponse, int socket)
     case SUCCES:
         sprintf(reponse, LOGIN "#" OK "#%d", patientId);
         ajoute(socket, patientId, nom, prenom);
+        // Ajouter le client à la liste globale pour ACBP
+        ajouterClientGlobal(DEFAULT_SERVER_IP, nom, prenom, patientId);
         break;
 
     case PATIENT_NON_TROUVE:
@@ -360,7 +395,21 @@ bool handleLogin(char* params, char* reponse, int socket)
 bool handleLogout(char* reponse, int socket)
 {
     printf("\t[THREAD %lu] LOGOUT\n", (unsigned long)pthread_self());
+    
+    // Récupérer l'ID du patient avant de le retirer
+    int indexClient = estPresent(socket);
+    int patientId = -1;
+    if (indexClient >= 0) {
+        patientId = clients[indexClient].patientId;
+    }
+    
     retire(socket);
+    
+    // Retirer le client de la liste globale pour ACBP
+    if (patientId >= 0) {
+        retirerClientGlobal(patientId);
+    }
+    
     formatSuccessResponse(reponse, LOGOUT, "");
     return false;
 }
@@ -527,4 +576,89 @@ bool handleBookConsultation(char* params, char* reponse, int socket)
     pthread_mutex_unlock(&mutexBD);
     
     return true;
+}
+
+// Fonction pour traiter la commande LIST_CLIENTS du protocole ACBP
+bool handleListClients(char* reponse, int socket)
+{
+    printf("\t[THREAD %lu] LIST_CLIENTS (ACBP)\n", (unsigned long)pthread_self());
+    
+    char listeClients[HUGE_BUF];
+    obtenirListeClients(listeClients);
+    
+    formatSuccessResponse(reponse, LIST_CLIENTS, listeClients);
+    return true;
+}
+
+// Fonctions pour la gestion globale des clients connectés
+void ajouterClientGlobal(const char *ip, const char *nom, const char *prenom, int idPatient)
+{
+    pthread_mutex_lock(&mutexClients);
+    
+    // Vérifier si le client n'est pas déjà dans la liste
+    for (int i = 0; i < nbClientsConnectes; i++)
+    {
+        if (clientsConnectes[i].idPatient == idPatient && clientsConnectes[i].actif)
+        {
+            pthread_mutex_unlock(&mutexClients);
+            return; // Déjà présent
+        }
+    }
+    
+    // Ajouter le client s'il y a de la place
+    if (nbClientsConnectes < NB_MAX_CLIENTS)
+    {
+        strcpy(clientsConnectes[nbClientsConnectes].ip, ip);
+        strcpy(clientsConnectes[nbClientsConnectes].nom, nom);
+        strcpy(clientsConnectes[nbClientsConnectes].prenom, prenom);
+        clientsConnectes[nbClientsConnectes].idPatient = idPatient;
+        clientsConnectes[nbClientsConnectes].actif = 1;
+        nbClientsConnectes++;
+        
+        printf("Client ajouté à la liste globale: %s %s (ID: %d, IP: %s)\n", 
+               nom, prenom, idPatient, ip);
+    }
+    
+    pthread_mutex_unlock(&mutexClients);
+}
+
+void retirerClientGlobal(int idPatient)
+{
+    pthread_mutex_lock(&mutexClients);
+    
+    for (int i = 0; i < nbClientsConnectes; i++)
+    {
+        if (clientsConnectes[i].idPatient == idPatient && clientsConnectes[i].actif)
+        {
+            clientsConnectes[i].actif = 0; // Marquer comme inactif
+            printf("Client retiré de la liste globale: %s %s (ID: %d)\n", 
+                   clientsConnectes[i].nom, clientsConnectes[i].prenom, idPatient);
+            break;
+        }
+    }
+    
+    pthread_mutex_unlock(&mutexClients);
+}
+
+void obtenirListeClients(char *listeClients)
+{
+    pthread_mutex_lock(&mutexClients);
+    
+    strcpy(listeClients, "");
+    
+    for (int i = 0; i < nbClientsConnectes; i++)
+    {
+        if (clientsConnectes[i].actif)
+        {
+            char clientInfo[SMALL_BUF];
+            sprintf(clientInfo, "%s;%s;%s;%d\n", 
+                   clientsConnectes[i].ip,
+                   clientsConnectes[i].nom,
+                   clientsConnectes[i].prenom,
+                   clientsConnectes[i].idPatient);
+            strcat(listeClients, clientInfo);
+        }
+    }
+    
+    pthread_mutex_unlock(&mutexClients);
 }

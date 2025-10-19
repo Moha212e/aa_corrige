@@ -14,6 +14,16 @@
 bool CBP(char* requete, char* reponse, int socket);
 
 /**
+ * Fonction principale du protocole ACBP (Admin Consultation Booking Protocol)
+ * Traite les requêtes admin et génère les réponses appropriées
+ * @param requete La requête reçue du client admin (format: COMMANDE#param1#param2#...)
+ * @param reponse Buffer pour stocker la réponse à envoyer au client admin
+ * @param socket Socket de communication avec le client admin
+ * @return true si la connexion doit rester ouverte, false si elle doit être fermée
+ */
+bool ACBP(char* requete, char* reponse, int socket);
+
+/**
  * Gère l'authentification/inscription d'un patient
  * @param nom Nom de famille du patient
  * @param prenom Prénom du patient

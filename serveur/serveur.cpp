@@ -4,6 +4,7 @@
 #include <string.h>
 #include <signal.h>
 #include <pthread.h>
+#include <sys/select.h>
 #include "../TCP/TCP.h"
 #include "../protocole/cbp.h"
 #include "../util/const.h"
@@ -11,16 +12,20 @@
 void HandlerSIGINT(int s);
 
 void TraitementConnexion(int sService);
+void TraitementConnexionAdmin(int sService);
 
 void* FctThreadClient(void* p);
+void* FctThreadAdmin(void* p);
 
 int chargerConfiguration(const char* nomFichier);
 
 int PORT_RESERVATION;
+int PORT_ADMIN;
 int NB_THREADS_POOL;
 int TAILLE_FILE_ATTENTE;
 
 int sEcoute;
+int sEcouteAdmin;
 
 int* socketsAcceptees;
 int indiceEcriture = 0, indiceLecture = 0;
@@ -39,7 +44,8 @@ int main(int argc, char* argv[])
     }
     
     printf("Configuration chargée depuis le fichier :\n");
-    printf("  Port: %d\n", PORT_RESERVATION);
+    printf("  Port Réservation (CBP): %d\n", PORT_RESERVATION);
+    printf("  Port Admin (ACBP): %d\n", PORT_ADMIN);
     printf("  Threads: %d\n", NB_THREADS_POOL);
     printf("  File d'attente: %d\n", 5);
     
@@ -65,14 +71,26 @@ int main(int argc, char* argv[])
         exit(1);
     }
     
-    printf("Tentative de création du socket sur le port %d...\n", PORT_RESERVATION);
+    printf("Tentative de création des sockets...\n");
+    
+    // Création du socket pour le protocole CBP (patients)
     if ((sEcoute = ServerSocket(PORT_RESERVATION)) == -1)
     {
-        perror("Erreur de ServeurSocket");
+        perror("Erreur de ServeurSocket (CBP)");
         printf("Impossible de créer le socket sur le port %d\n", PORT_RESERVATION);
         exit(1);
     }
-    printf("Socket créé avec succès sur le port %d\n", PORT_RESERVATION);
+    printf("Socket CBP créé avec succès sur le port %d\n", PORT_RESERVATION);
+    
+    // Création du socket pour le protocole ACBP (admin)
+    if ((sEcouteAdmin = ServerSocket(PORT_ADMIN)) == -1)
+    {
+        perror("Erreur de ServeurSocket (ACBP)");
+        printf("Impossible de créer le socket sur le port %d\n", PORT_ADMIN);
+        close(sEcoute);
+        exit(1);
+    }
+    printf("Socket ACBP créé avec succès sur le port %d\n", PORT_ADMIN);
     
     printf("Création du pool de threads.\n");
     pthread_t th;
@@ -81,25 +99,62 @@ int main(int argc, char* argv[])
     
     int sService;
     char ipClient[IP_STR_LEN] = DEFAULT_SERVER_IP;
-    printf("Demarrage du serveur.\n");
+    printf("Démarrage du serveur avec gestion de deux sockets.\n");
+    
     while (1)
     {
-        printf("Attente d'une connexion...\n");
-        if ((sService = Accept(sEcoute, ipClient)) == -1)
-        {
-            perror("Erreur de Accept");
-            close(sEcoute);
-            CBP_Close();
-            exit(1);
-        }
-        printf("Connexion acceptée : IP=%s socket=%d\n", ipClient, sService);
+        fd_set readfds;
+        int max_fd;
         
-        pthread_mutex_lock(&mutexSocketsAcceptees);
-        socketsAcceptees[indiceEcriture] = sService;
-        indiceEcriture++;
-        if (indiceEcriture == TAILLE_FILE_ATTENTE) indiceEcriture = 0;
-        pthread_mutex_unlock(&mutexSocketsAcceptees);
-        pthread_cond_signal(&condSocketsAcceptees);
+        FD_ZERO(&readfds);
+        FD_SET(sEcoute, &readfds);
+        FD_SET(sEcouteAdmin, &readfds);
+        
+        max_fd = (sEcoute > sEcouteAdmin) ? sEcoute : sEcouteAdmin;
+        
+        printf("Attente d'une connexion sur les ports %d (CBP) ou %d (ACBP)...\n", 
+               PORT_RESERVATION, PORT_ADMIN);
+        
+        int activity = select(max_fd + 1, &readfds, NULL, NULL, NULL);
+        if (activity < 0)
+        {
+            perror("Erreur de select");
+            continue;
+        }
+        
+        // Vérifier le socket CBP (patients)
+        if (FD_ISSET(sEcoute, &readfds))
+        {
+            if ((sService = Accept(sEcoute, ipClient)) == -1)
+            {
+                perror("Erreur de Accept (CBP)");
+                continue;
+            }
+            printf("Connexion CBP acceptée : IP=%s socket=%d\n", ipClient, sService);
+            
+            pthread_mutex_lock(&mutexSocketsAcceptees);
+            socketsAcceptees[indiceEcriture] = sService;
+            indiceEcriture++;
+            if (indiceEcriture == TAILLE_FILE_ATTENTE) indiceEcriture = 0;
+            pthread_mutex_unlock(&mutexSocketsAcceptees);
+            pthread_cond_signal(&condSocketsAcceptees);
+        }
+        
+        // Vérifier le socket ACBP (admin)
+        if (FD_ISSET(sEcouteAdmin, &readfds))
+        {
+            if ((sService = Accept(sEcouteAdmin, ipClient)) == -1)
+            {
+                perror("Erreur de Accept (ACBP)");
+                continue;
+            }
+            printf("Connexion ACBP acceptée : IP=%s socket=%d\n", ipClient, sService);
+            
+            // Traiter directement la connexion admin dans un thread séparé
+            pthread_t threadAdmin;
+            pthread_create(&threadAdmin, NULL, FctThreadAdmin, (void*)&sService);
+            pthread_detach(threadAdmin);
+        }
     }
 } 
 
@@ -124,6 +179,15 @@ void* FctThreadClient(void* p)
                (unsigned long)pthread_self(), sService);
         TraitementConnexion(sService);
     }
+}
+
+void* FctThreadAdmin(void* p)
+{
+    int sService = *(int*)p;
+    printf("\t[THREAD ADMIN %lu] Traitement connexion admin socket %d\n",
+           (unsigned long)pthread_self(), sService);
+    TraitementConnexionAdmin(sService);
+    return NULL;
 } 
 
 void HandlerSIGINT(int s)
@@ -131,6 +195,7 @@ void HandlerSIGINT(int s)
     (void)s;
     printf("\nArret du serveur.\n");
     close(sEcoute);
+    close(sEcouteAdmin);
     pthread_mutex_lock(&mutexSocketsAcceptees);
     for (int i = 0; i < TAILLE_FILE_ATTENTE; i++)
         if (socketsAcceptees[i] != -1) close(socketsAcceptees[i]);
@@ -187,6 +252,54 @@ void TraitementConnexion(int sService)
         }
 }
 
+void TraitementConnexionAdmin(int sService)
+{
+        char requete[MED_BUF], reponse[MED_BUF];
+        int nbLus, nbEcrits;
+        int status = SUCCES;
+
+        while (1)
+        {
+            printf("\t[THREAD ADMIN %lu] Attente requete admin...\n", (unsigned long)pthread_self());
+
+            if ((nbLus = Receive(sService, requete)) < 0)
+            {
+                perror("Erreur de Receive (Admin)");
+                close(sService);
+                return;
+            }
+
+            if (nbLus == 0)
+            {
+                printf("\t[THREAD ADMIN %lu] Fin de connexion du client admin.\n", (unsigned long)pthread_self());
+                close(sService);
+                return;
+            }
+
+            requete[nbLus] = 0;
+            printf("\t[THREAD ADMIN %lu] Requete admin recue = %s\n", (unsigned long)pthread_self(), requete);
+
+            status = ACBP(requete, reponse, sService);
+
+            if ((nbEcrits = Send(sService, reponse, strlen(reponse))) < 0)
+            {
+                perror("Erreur de Send (Admin)");
+                close(sService);
+                return;
+            }
+
+            printf("\t[THREAD ADMIN %lu] Reponse admin envoyee = %s\n", (unsigned long)pthread_self(), reponse);
+
+            if (status == FERMER_CONNEXION)
+            {
+                printf("\t[THREAD ADMIN %lu] Fin de connexion de la socket admin %d\n", 
+                       (unsigned long)pthread_self(), sService);
+                close(sService);
+                return;
+            }
+        }
+}
+
 int chargerConfiguration(const char* nomFichier)
 {
     FILE* fichier = fopen(nomFichier, "r");
@@ -209,6 +322,10 @@ int chargerConfiguration(const char* nomFichier)
             if (strcmp(cle, "PORT_RESERVATION") == 0)
             {
                 PORT_RESERVATION = atoi(valeur);
+            }
+            else if (strcmp(cle, "PORT_ADMIN") == 0)
+            {
+                PORT_ADMIN = atoi(valeur);
             }
             else if (strcmp(cle, "NB_THREADS_POOL") == 0)
             {
