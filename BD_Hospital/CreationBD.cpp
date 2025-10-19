@@ -223,7 +223,11 @@ int main() {
               consultations[i].doctor_id, consultations[i].patient_id, consultations[i].date,
               consultations[i].hour, consultations[i].reason);
     }
-    if (mysql_query(connexion, request)) finish_with_error(connexion);
+    printf("DEBUG: Requête consultation %d = %s\n", i+1, request);
+    if (mysql_query(connexion, request)) {
+      printf("Erreur sur la consultation %d\n", i+1);
+      finish_with_error(connexion);
+    }
   }
 
   mysql_close(connexion);
