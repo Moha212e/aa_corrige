@@ -8,6 +8,9 @@
 #include <mysql.h>
 #include <cstddef>
 #include <cstring>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
 
 typedef struct
 {
@@ -59,7 +62,7 @@ bool handleGetSpecialties(char* reponse, int socket);
 bool handleGetDoctors(char* reponse, int socket);
 bool handleSearchConsultations(char* params, char* reponse, int socket);
 bool handleBookConsultation(char* params, char* reponse, int socket);
-bool handleListClients(char* reponse, int socket);
+int handleListClients(char* reponse, int socket);
 bool verifierAuthentification(int socket, const char *commande, char *reponse)
 {
     if (estPresent(socket) == -1)
@@ -153,7 +156,7 @@ bool CBP(char *requete, char *reponse, int socket)
 }
 
 // Fonction pour traiter les requêtes du protocole ACBP
-bool ACBP(char *requete, char *reponse, int socket)
+int ACBP(char *requete, char *reponse, int socket)
 {
     char *commande = strtok(requete, "#");
     // params non utilisé pour le moment mais gardé pour l'extensibilité
@@ -164,7 +167,7 @@ bool ACBP(char *requete, char *reponse, int socket)
     }
     else {
         formatErrorResponse(reponse, commande, "Commande ACBP inconnue !");
-        return true;
+        return SUCCES;
     }
 }
 int CBP_Login(const char *nom, const char *prenom, int numeroPatient, int nouveauPatient, int *patientId)
@@ -254,7 +257,7 @@ void ajoute(int socket, int patientId, const char *nom, const char *prenom)
     clients[nbClients].patientId = patientId;
     strcpy(clients[nbClients].nom, nom);
     strcpy(clients[nbClients].prenom, prenom);
-    strcpy(clients[nbClients].ip, "127.0.0.1"); // IP par défaut pour les tests
+    obtenirIPClient(socket, clients[nbClients].ip); // Récupérer l'IP réelle
     nbClients++;
     pthread_mutex_unlock(&mutexClients);
 }
@@ -380,8 +383,12 @@ bool handleLogin(char* params, char* reponse, int socket)
     case SUCCES:
         sprintf(reponse, LOGIN "#" OK "#%d", patientId);
         ajoute(socket, patientId, nom, prenom);
-        // Ajouter le client à la liste globale pour ACBP
-        ajouterClientGlobal("127.0.0.1", nom, prenom, patientId);
+        // Ajouter le client à la liste globale pour ACBP avec l'IP réelle
+        char clientIP[IP_STR_LEN];
+        obtenirIPClient(socket, clientIP);
+        printf("\t[THREAD %lu] Client %s %s connecté depuis IP: %s\n", 
+               (unsigned long)pthread_self(), prenom, nom, clientIP);
+        ajouterClientGlobal(clientIP, nom, prenom, patientId);
         break;
 
     case PATIENT_NON_TROUVE:
@@ -587,7 +594,7 @@ bool handleBookConsultation(char* params, char* reponse, int socket)
 }
 
 // Fonction pour traiter la commande LIST_CLIENTS du protocole ACBP
-bool handleListClients(char* reponse, int socket)
+int handleListClients(char* reponse, int socket)
 {
     (void)socket; // socket non utilisé pour le moment
     printf("\t[THREAD %lu] LIST_CLIENTS (ACBP)\n", (unsigned long)pthread_self());
@@ -596,7 +603,19 @@ bool handleListClients(char* reponse, int socket)
     obtenirListeClients(listeClients);
     
     formatSuccessResponse(reponse, LIST_CLIENTS, listeClients);
-    return false; // Fermer la connexion après avoir envoyé la liste
+    return FERMER_CONNEXION; // Fermer la connexion après avoir envoyé la liste
+}
+
+// Fonction pour récupérer l'IP d'une socket
+void obtenirIPClient(int socket, char *ip) {
+    struct sockaddr_in addr;
+    socklen_t addr_len = sizeof(addr);
+    
+    if (getpeername(socket, (struct sockaddr*)&addr, &addr_len) == 0) {
+        strcpy(ip, inet_ntoa(addr.sin_addr));
+    } else {
+        strcpy(ip, "127.0.0.1"); // IP par défaut en cas d'erreur
+    }
 }
 
 // Fonctions pour la gestion globale des clients connectés

@@ -19,9 +19,9 @@ bool CBP(char* requete, char* reponse, int socket);
  * @param requete La requête reçue du client admin (format: COMMANDE#param1#param2#...)
  * @param reponse Buffer pour stocker la réponse à envoyer au client admin
  * @param socket Socket de communication avec le client admin
- * @return true si la connexion doit rester ouverte, false si elle doit être fermée
+ * @return SUCCES si la connexion doit rester ouverte, FERMER_CONNEXION si elle doit être fermée
  */
-bool ACBP(char* requete, char* reponse, int socket);
+int ACBP(char* requete, char* reponse, int socket);
 
 /**
  * Gère l'authentification/inscription d'un patient
