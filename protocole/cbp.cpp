@@ -187,8 +187,11 @@ int CBP_Login(const char *nom, const char *prenom, int numeroPatient, int nouvea
                 "INSERT INTO patients (last_name, first_name, birth_date) VALUES ('%s', '%s', '1900-01-01')",
                 nom, prenom);
 
+        printf("DEBUG: Requête SQL = %s\n", requeteSQL);
+        
         if (mysql_query(connexionBD, requeteSQL))
         {
+            printf("DEBUG: Erreur MySQL = %s\n", mysql_error(connexionBD));
             pthread_mutex_unlock(&mutexBD);
             return ERREUR_BD;
         }
@@ -203,8 +206,11 @@ int CBP_Login(const char *nom, const char *prenom, int numeroPatient, int nouvea
                 "SELECT id FROM patients WHERE last_name = '%s' AND first_name = '%s' AND id = %d",
                 nom, prenom, numeroPatient);
 
+        printf("DEBUG: Requête SQL = %s\n", requeteSQL);
+        
         if (mysql_query(connexionBD, requeteSQL))
         {
+            printf("DEBUG: Erreur MySQL = %s\n", mysql_error(connexionBD));
             pthread_mutex_unlock(&mutexBD);
             return ERREUR_BD;
         }
